@@ -10,7 +10,7 @@ pub enum FileType{
 }
 
 
-struct File{
+pub struct File{
     inode : u32,
     file_size :u16,
     name_len : u8,
@@ -18,17 +18,7 @@ struct File{
     name : String
 }
 
-struct inode {
-    file_type : FileType,
-    size : u64,
-    atime : u32, //最后访问时间
-    ctime : u32, //最后inode修改时间
-    mtime : u32, //最后修改时间
-    direct_pointer : u32, //直接索引
-    singly_indirect_block : u32, //一级索引
-    doubly_indirect_block : u32,
-    triply_indirect_block: u32,
-}
+
 
 
 impl File{
@@ -45,8 +35,3 @@ impl File{
 }
 
 
-
-
-fn main(){
-    println!("YES");
-}
