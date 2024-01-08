@@ -1,5 +1,5 @@
 use crate::file;
-static BLOCK_SIZE : u32 = 1024; //每个数据块的大小为1kb
+const BLOCK_SIZE : usize = 1024; //每个数据块的大小为1kb
 
 //part 1
 pub struct Boot_Block {
@@ -46,7 +46,7 @@ struct Inode_Table {
 
 
 struct Data_Block {
-
+    data:[u8; BLOCK_SIZE],//每个文件块的大小为1k
 }
 
 enum Permission {
@@ -66,10 +66,4 @@ struct inode {    //node块的指针
     doubly_indirect_block : u32,
     triply_indirect_block: u32,
 }
-
-fn main() {
-
-}
-
-
 
