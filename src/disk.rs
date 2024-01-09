@@ -3,10 +3,11 @@ use fuser::Filesystem;
 use crate::block::{Block_Group,Boot_Block};
 pub struct EXT2FS{
     //boot_block : Boot_Block,
-    block : Vec<Block_Group>,
+    blocks : Vec<Block_Group>,
     user_name : String,
     password : String
 }
+
 
 impl Filesystem for EXT2FS {
     fn write(
@@ -21,6 +22,8 @@ impl Filesystem for EXT2FS {
             _lock_owner: Option<u64>,
             reply: fuser::ReplyWrite,
         ) {
+
+        
         
     }
 
@@ -48,6 +51,8 @@ impl Filesystem for EXT2FS {
             reply: fuser::ReplyEntry,
         ) {
         
+
+
     }
     fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
         
@@ -61,18 +66,22 @@ impl Filesystem for EXT2FS {
 }
 
 impl EXT2FS {
-   pub fn new(name :String, pw : String)-> Self {
+    pub fn ls(&self) {
+        self.blocks[0].list()
+    }
+    pub fn get_inode(){
+
+    }
+    pub fn new(name :String, pw : String)-> Self {
         EXT2FS{
             //boot_block : boot,
-            block : vec![],
+            blocks : vec![],
             user_name : name,
             password : pw
         }
     }
 
-    pub fn ls() {
 
-    }
     pub fn cd() {
 
     }
@@ -86,3 +95,6 @@ impl EXT2FS {
 
     }
 }
+
+
+
