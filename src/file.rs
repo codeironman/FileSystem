@@ -20,5 +20,19 @@ pub struct DirectoryEntry{
 }
 
 
+impl DirectoryEntry {
+    fn new(&mut self,file_name : String, fild_type : FileType,index_ndoe : u32, size : u16) -> DirectoryEntry{
+        DirectoryEntry{
+            name :file_name,
+            file_type : fild_type,
+            name_len : self.name.len() as u8,
+            inode :index_ndoe,
+            file_size : size
+        }
+    }
+
+}
+
+
 
 
