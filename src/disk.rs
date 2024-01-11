@@ -1,9 +1,9 @@
 use fuser::Filesystem;
 use crate::file::*;
-use crate::block::{Block_Group,Boot_Block,SuperBlock, self};
+use crate::block::{BlockGroup,BootBlock,SuperBlock, self};
 pub struct EXT2FS{
     //boot_block : Boot_Block,
-    blocks : Vec<Block_Group>,
+    blocks : Vec<BlockGroup>,
     current_directory : String,
     current_inode_index : u32,
     user_name : String,
@@ -14,6 +14,10 @@ pub struct EXT2FS{
 
 
 impl Filesystem for EXT2FS {
+    fn init( &mut self, _req: &fuser::Request<'_>, _config: &mut fuser::KernelConfig) -> Result<(), std::ffi::c_int> {
+        Ok(())
+    }
+
     fn write(
             &mut self,
             _req: &fuser::Request<'_>,
@@ -54,13 +58,14 @@ impl Filesystem for EXT2FS {
             reply: fuser::ReplyEntry,
         ) {
         let name = _name.to_string_lossy().into_owned();
-        let block_index = self.get_block_group();
-        //存在空闲的块
-        if block_index == -1 {
-            let block_group = Block_Group::new();
-            self.blocks.push(block_group);
-            let block_index = self.blocks.len() - 1;
-        }
+        let block_index = match self.get_block_group() {
+            Some(index) => index,
+            None => {
+                let block_group = BlockGroup::new();
+                self.blocks.push(block_group);
+                self.blocks.len() - 1
+            },
+        };
         //需要新建一个块
         let index = self.blocks[block_index as usize].get_inode_index(_parent as usize);
         let entry = DirectoryEntry::new(name,FileType::Directory);
@@ -81,7 +86,7 @@ impl Filesystem for EXT2FS {
 impl EXT2FS {
     pub fn new(name :String, pwd : String)-> Self {
         //新建一个大块
-        let root_block = Block_Group::new();
+        let root_block = BlockGroup::new();
         //将root文件夹放入第一个大块中
         EXT2FS{
             //boot_block : boot,
@@ -96,17 +101,11 @@ impl EXT2FS {
     pub fn ls(&self) { 
         self.blocks[0].list()
     }
-    pub fn  get_block_group(&self) -> i32{
-        let mut block_index = 0;
-        for block_group in &self.blocks {
-            if !block_group.group_descriper_table.full() {
-                return block_index;
-            }
-            else {
-                block_index += 1;
-            }
-        }
-        -1
+
+    pub fn get_block_group(&self) -> Option<usize>{
+        self.blocks
+            .iter()
+            .position(|x| !x.full())
     }
 
 

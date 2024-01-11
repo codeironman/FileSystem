@@ -3,24 +3,24 @@ use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::
 use bincode;
 use serde::de::value::SeqDeserializer;
 
-use crate::{file::*, block};
+use crate::{file::*, block, bitmap::*};
 const BLOCK_SIZE : usize = 1024; //每个数据块的大小为1kB
 //一个块的大小控制了，inode和bitmap的位图的大就是一个块的大小
 //那么块的数据也就确定了，1024*8
 const BLOCK_COUNT : usize = BLOCK_SIZE * 8;
 //part 1
-pub struct Boot_Block {
+pub struct BootBlock {
     
 }
 
 //part 2
-pub struct Block_Group {
+pub struct BlockGroup {
     superblock : SuperBlock, //超级块
-    pub group_descriper_table : Group_Descriper_Table,//块组描述
-    inode_bitmap : Vec<Option<u8>>, // inode位图,判断inode是否分配
-    block_bitmap : Vec<Option<u8>>, // 块位图// 用于标识区块组中所有区块的使用状态
+    group_descriper_table : GroupDescriperTable,//块组描述
+    inode_bitmap : Bitmap, // inode位图,判断inode是否分配
+    block_bitmap : Bitmap, // 块位图// 用于标识区块组中所有区块的使用状态
     inode_table : Vec<Inode>, // inode表，用于描述数据块 
-    data_block : Vec<Data_Block>
+    data_block : Vec<DataBlock>
 }
 //todo，之后在管理超级块
 pub struct SuperBlock{
@@ -33,7 +33,7 @@ pub struct SuperBlock{
 }
 
 
-pub struct Group_Descriper_Table {
+pub struct GroupDescriperTable {
     bg_block_bitmap : u32,
     bg_inode_bitmap : u32,
     bg_inode_table : u32,
@@ -57,25 +57,28 @@ struct Inode{
     pub triply_indirect_block: Option<u32>, //二级索引，第15个块
 }
 
-struct Data_Block {
+struct DataBlock {
     pub data:[u8; BLOCK_SIZE as usize],//每个文件块的大小为1kB
 }
 
-
-impl Block_Group {
-    pub fn  new() -> Self{
-        Block_Group{
-            superblock:SuperBlock::new(),
-            group_descriper_table : Group_Descriper_Table::new(),
-            inode_bitmap : vec![],
-            block_bitmap : vec![],
+impl BlockGroup {
+    pub fn new() -> Self{
+        BlockGroup{
+            superblock: SuperBlock::new(),
+            group_descriper_table : GroupDescriperTable::new(),
+            inode_bitmap : Bitmap::new(BLOCK_SIZE),
+            block_bitmap : Bitmap::new(BLOCK_SIZE),
             inode_table : vec![],
             data_block : vec![]
 
         }
     }
+    pub fn full(&self) -> bool{
+        self.block_bitmap.free_idx() == None
+    }
+
     pub fn list(&self) {
-        for block in &self.data_block {s
+        for block in &self.data_block {
                 let file_name =  block.get_file().name;
                 print!("{} ",file_name);
         }
@@ -90,39 +93,36 @@ impl Block_Group {
         let index = self.inode_table[parent_inode].get_index();
         let mut self_inode = Inode::new();
         let mut child_inode = Inode::new();
-        let dir = DirectoryEntry::new(name,FileType::Directory, index_node, size)
+        let dir = DirectoryEntry::new(name,FileType::Directory, index_node, size);
 
     }
     fn get_inode(&mut self) -> usize{
-        //找到第一个空的inode
-        for inode_index in self.inode_bitmap {
-            if inode_index == None {
-                return inode_index.unwrap() as usize;
+        match self.inode_bitmap.free_idx() {
+            Some(index) => return index,
+            None => {
+                self.inode_bitmap.set(self.inode_table.len()-1, true);
+                self.inode_table.push(Inode::new());
+                self.inode_table.len()
             }
         }
-        //如果找不到就新建一个inode
-        self.inode_table.push(Inode::new());
-        self.inode_bitmap.push(Option::None);
-        return self.inode_table.len();
     }    
     pub fn get_inode_index(&mut self,inode_index : usize) -> i32{
         self.inode_table[inode_index].get_index()
     }
     //找到空的块
     pub fn get_block(&mut self) -> u32 {
-        for block_index in self.block_bitmap {
-            if block_index == None {
-                return block_index.unwrap() as u32;
-            }
+        if let Some(index) = self.block_bitmap.free_idx() {
+            return index as u32;
         }
-        self.block_bitmap.push(Option::None);
-        self.data_block.push(Data_Block::new());
-        return self.block_bitmap.len() as u32 ;
+        self.block_bitmap.set(self.data_block.len(), true);
+        self.data_block.push(DataBlock::new());
+        return self.data_block.len() as u32 ;
     }
 
     fn bg_update(&mut self,block_index: usize,inode_index : usize){
-         self.block_bitmap[block_index] = Option::Some(1);    
-         self.inode_bitmap[inode_index] = Option::Some(1); 
+        
+         self.block_bitmap.set(block_index, true);
+         self.inode_bitmap.set(inode_index, true);
     }
     pub fn write_dir(&mut self, dir : DirectoryEntry, parent_inode : usize){
         let dir_data = bincode::serialize(&dir).unwrap();//把数据序列化
@@ -164,10 +164,9 @@ impl SuperBlock {
     }
 }
 
-
-impl Group_Descriper_Table {
+impl GroupDescriperTable {
     pub fn new() -> Self {
-        Group_Descriper_Table{
+        GroupDescriperTable{
             bg_block_bitmap : 2,
             bg_inode_bitmap : 3,
             bg_inode_table : 4,
@@ -239,12 +238,12 @@ impl Inode {
 
 
 
-impl Data_Block {
+impl DataBlock {
     pub fn get_file(&self) -> DirectoryEntry{
         bincode::deserialize(&self.data).unwrap()
     }
     pub fn new() -> Self {
-        Data_Block{
+        DataBlock{
             data:[0; BLOCK_SIZE as usize]
         }
     }

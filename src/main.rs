@@ -4,13 +4,14 @@ use std::io::{stdout, Write, stdin};
 mod test;
 use disk::EXT2FS;
 mod block;
+mod bitmap;
 use fuser::MountOption;
-use crate::block::Boot_Block;
+use block::BootBlock;
 
 
 fn main() {
     let mountpoint = "";
-    let boot = Boot_Block{};
+    let boot = BootBlock{};
     let name= String::new();
     let pw = String::new();
     

@@ -21,7 +21,6 @@ pub struct DirectoryEntry{
     pub name : String
 }
 
-
 impl DirectoryEntry {
     pub fn new(file_name : String, fild_type : FileType,index_node : u32, _size : u16) -> Self{
         DirectoryEntry{
