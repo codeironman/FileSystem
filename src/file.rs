@@ -1,6 +1,8 @@
+use std::iter::StepBy;
+
 use serde::{Deserialize,Serialize};
 #[derive(Serialize,Deserialize)]
-enum FileType{
+pub enum FileType{
     Unknow = 0,
     Regular = 1,//普通文件
     Directory = 2,//目录文件
@@ -12,8 +14,8 @@ enum FileType{
 }
 #[derive(Serialize,Deserialize)]//能够派生到自己定义的文件
 pub struct DirectoryEntry{
-    inode : u32,
-    file_size :u16,
+    inode : u32,//指的是这个目录文件指向的inode
+    file_size :u16,//按照
     name_len : u8,
     file_type :FileType,//8位二进制
     pub name : String
@@ -21,13 +23,13 @@ pub struct DirectoryEntry{
 
 
 impl DirectoryEntry {
-    fn new(&mut self,file_name : String, fild_type : FileType,index_ndoe : u32, size : u16) -> DirectoryEntry{
+    pub fn new(file_name : String, fild_type : FileType,index_node : u32, _size : u16) -> Self{
         DirectoryEntry{
             name :file_name,
             file_type : fild_type,
-            name_len : self.name.len() as u8,
-            inode :index_ndoe,
-            file_size : size
+            name_len : file_name.len() as u8,
+            inode :index_node,
+            file_size : _size
         }
     }
 

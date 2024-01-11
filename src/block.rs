@@ -1,8 +1,9 @@
-use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}};
+use core::num;
+use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min};
 use bincode;
 use serde::de::value::SeqDeserializer;
 
-use crate::{file::{self, DirectoryEntry}, block};
+use crate::{file::*, block};
 const BLOCK_SIZE : usize = 1024; //每个数据块的大小为1kB
 //一个块的大小控制了，inode和bitmap的位图的大就是一个块的大小
 //那么块的数据也就确定了，1024*8
@@ -21,7 +22,7 @@ pub struct Block_Group {
     inode_table : Vec<Inode>, // inode表，用于描述数据块 
     data_block : Vec<Data_Block>
 }
-
+//todo，之后在管理超级块
 pub struct SuperBlock{
     s_inodes_count  : u32,   
     s_block_count : u32,
@@ -45,7 +46,7 @@ struct Inode{
     i_mode : u16,//16位置用于表示文件的类型和权限
     i_size : u32,
     i_atime : u32,//存储的是秒数
-    i_ctime : u32,
+    i_ctime : u32,    
     i_mtime : u32,
     i_dtime : u32,
     i_block: [Option<u32>;15],//指向的是数据块
@@ -74,70 +75,76 @@ impl Block_Group {
         }
     }
     pub fn list(&self) {
-        for block in &self.data_block {
+        for block in &self.data_block {s
                 let file_name =  block.get_file().name;
                 print!("{} ",file_name);
         }
     }
-    //找到一个空的inode块 元组表示第几个块的第几个指针
-    fn get_inode(&self) -> (i32,i32){
-        let mut index = 0;
-        for inode_index in self.inode_bitmap {
-            if let Some(_) = inode_index {
-                index += 1;
-            }
-            else {
-                let num = self.inode_table[index as usize].get_index();
-                if num != -1 {
-                    return (index,num);
-                }
-                //找二级指针的值,todo 
-                else {
+    pub fn add_entry_to_directory(&mut self,name :String, parent_inode : usize) {
+        let inode_index = self.get_inode() as u32;//分配一个inode
+        let dir = DirectoryEntry::new(name,FileType::Directory, inode_index, 0);
+        let dir_data = bincode::serialize(&dir).unwrap();
 
-                }
+
+
+        let index = self.inode_table[parent_inode].get_index();
+        let mut self_inode = Inode::new();
+        let mut child_inode = Inode::new();
+        let dir = DirectoryEntry::new(name,FileType::Directory, index_node, size)
+
+    }
+    fn get_inode(&mut self) -> usize{
+        //找到第一个空的inode
+        for inode_index in self.inode_bitmap {
+            if inode_index == None {
+                return inode_index.unwrap() as usize;
             }
         }
-        (-1,-1)
+        //如果找不到就新建一个inode
+        self.inode_table.push(Inode::new());
+        self.inode_bitmap.push(Option::None);
+        return self.inode_table.len();
     }    
-    fn get_inode_pointer() {
-
-
+    pub fn get_inode_index(&mut self,inode_index : usize) -> i32{
+        self.inode_table[inode_index].get_index()
     }
     //找到空的块
-    pub fn get_block(&self) ->i32 {
-        let mut index = 0 ;
+    pub fn get_block(&mut self) -> u32 {
         for block_index in self.block_bitmap {
             if block_index == None {
-                return index;
+                return block_index.unwrap() as u32;
             }
-            index += 1;
         }
-        0
+        self.block_bitmap.push(Option::None);
+        self.data_block.push(Data_Block::new());
+        return self.block_bitmap.len() as u32 ;
+    }
+
+    fn bg_update(&mut self,block_index: usize,inode_index : usize){
+         self.block_bitmap[block_index] = Option::Some(1);    
+         self.inode_bitmap[inode_index] = Option::Some(1); 
+    }
+    pub fn write_dir(&mut self, dir : DirectoryEntry, parent_inode : usize){
+        let dir_data = bincode::serialize(&dir).unwrap();//把数据序列化
+        let dir_size = dir_data.len();//这里得到的是字节数
+        let (num_block,offset) = ((dir_size + BLOCK_SIZE - 1) / BLOCK_SIZE, dir_size % BLOCK_SIZE);
+        let inode_index= self.get_inode();//分配了一个inode
+        for i in 0..num_block {
+            let start = i * BLOCK_SIZE;
+            let end = min(start+BLOCK_SIZE, dir_size);
+            let block_data = &dir_data[start..end];
+            let block_index = self.write_to_block(block_data);
+            self.inode_table[inode_index].inode_update(block_data.len() as u32,inode_index, block_index as u32);
+            self.bg_update(block_index, inode_index);
+        }
+        self.group_descriper_table.gdt_update(1, 1,1);
+
     }
     //将文件写入数据块中
-    fn write_to_block(&self,dir : DirectoryEntry){
-        let dir_data = bincode::serialize(&dir).unwrap();//把数据序列化
-        let (i_index,index) = self.get_inode();//知道写入到哪个inode中
+    pub fn write_to_block(&mut self,data :&[u8]) -> usize{
         let block_index = self.get_block();
-        if i_index != -1 {
-            if block_index != -1 {
-                
-            }
-            else {
-                let mut data_block = Data_Block::new();
-                self.data_block.push(data_block);
-                self.group_descriper_table.gdb_update(1, 1,1);
-                data_block.write(&dir_data)
-                
-
-            }
-        }
-        //需要新建inode
-        else{
-
-        }
-
-
+        self.data_block[block_index as usize].write(&data);
+        return block_index as usize;
     }
 }
 
@@ -161,18 +168,21 @@ impl SuperBlock {
 impl Group_Descriper_Table {
     pub fn new() -> Self {
         Group_Descriper_Table{
-            block_bitmap : 2,
-            inode_bitmap : 3,
-            inode_table : 4,
-            free_block_count : BLOCK_COUNT as u16,
-            free_inode_count :BLOCK_COUNT as u16,
-            dirs_count : 0,
+            bg_block_bitmap : 2,
+            bg_inode_bitmap : 3,
+            bg_inode_table : 4,
+            bg_free_block_count : BLOCK_COUNT as u16,
+            bg_free_inode_count : BLOCK_COUNT as u16,
+            bg_used_dirs_count: 0,
         }
     }
-    pub fn gdb_update(&mut self, block_change : i16, inode_change : i16, dir_change : i16){
-        self.free_block_count  = (self.free_block_count as i16 + block_change) as u16;
-        self.free_inode_count  = (self.free_inode_count as i16 + inode_change) as u16;
-        self.dirs_count = (self.dirs_count as i16 + dir_change) as u16;
+    pub fn gdt_update(&mut self, block_change : i16, inode_change : i16, dir_change : i16){
+        self.bg_free_block_count  = (self.bg_free_block_count as i16 + block_change) as u16;
+        self.bg_free_inode_count  = (self.bg_free_inode_count as i16 + inode_change) as u16;
+        self.bg_used_dirs_count = (self.bg_used_dirs_count as i16 + dir_change) as u16;
+    }
+    pub fn full(&self) -> bool{
+        self.bg_free_block_count == 0
     }
 }
 enum Permission {
@@ -181,7 +191,7 @@ enum Permission {
     Excute = 0x0040 //可执行        
 }
 //枚举不支持｜和&，先转化为u16
-pub enum FileType{
+pub enum Filetype{
     Unknow = 0x0000,
     Regular = 0x8000,
     Directory = 0x4000,
@@ -219,12 +229,18 @@ impl Inode {
         -1 
     }
 
+    pub fn inode_update(&mut self, size : u32,index : usize,block_index : u32) {
+        self.i_size = size;
+        self.direct_pointer[index] = Option::Some(block_index);
+        self.i_ctime = get_current_time();
+    }
+
 }
 
 
 
 impl Data_Block {
-    pub fn get_file(&self) -> file::DirectoryEntry{
+    pub fn get_file(&self) -> DirectoryEntry{
         bincode::deserialize(&self.data).unwrap()
     }
     pub fn new() -> Self {
@@ -237,6 +253,7 @@ impl Data_Block {
             self.data[i] = byte;
         } 
     }
+    pub fn unused_
     
 }
 
