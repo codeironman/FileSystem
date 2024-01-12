@@ -58,7 +58,7 @@ impl Filesystem for EXT2FS {
             reply: fuser::ReplyEntry,
         ) {
         let name = _name.to_string_lossy().into_owned();
-        let block_index = match self.get_block_group() {
+        let block_group_index = match self.get_block_group() {
             Some(index) => index,
             None => {
                 let block_group = BlockGroup::new();
@@ -67,9 +67,8 @@ impl Filesystem for EXT2FS {
             },
         };
         //需要新建一个块
-        let index = self.blocks[block_index as usize].get_inode_index(_parent as usize);
-        let entry = DirectoryEntry::new(name,FileType::Directory);
-        self.blocks[block_index as usize].write_to_block(entry); 
+        self.blocks[block_group_index].bg_mkdir(name, _parent as usize);
+
 
     }
     fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
@@ -99,7 +98,7 @@ impl EXT2FS {
 
     }
     pub fn ls(&self) { 
-        self.blocks[0].list()
+        
     }
 
     pub fn get_block_group(&self) -> Option<usize>{

@@ -74,30 +74,57 @@ impl BlockGroup {
         }
     }
     pub fn full(&self) -> bool{
-        self.block_bitmap.free_idx() == None
+        self.block_bitmap.free_index() == None
     }
 
-    pub fn list(&self) {
+    pub fn bg_list(&self,parent_inode : usize) {
+        for index in self.inode_table[parent_inode].direct_pointer{
+
+        }
         for block in &self.data_block {
                 let file_name =  block.get_file().name;
                 print!("{} ",file_name);
         }
     }
-    pub fn add_entry_to_directory(&mut self,name :String, parent_inode : usize) {
-        let inode_index = self.get_inode() as u32;//分配一个inode
-        let dir = DirectoryEntry::new(name,FileType::Directory, inode_index, 0);
-        let dir_data = bincode::serialize(&dir).unwrap();
+    pub fn bg_mkdir(&mut self, name : String, parent_inode : usize){
+        let child_inode = self.add_entry_to_directory(name, parent_inode);
+        self.add_entry_to_directory(".".to_string(), child_inode);
+        self.add_entry_to_directory("..".to_string(), child_inode);
+    }
 
+    pub fn add_entry_to_directory(&mut self,name :String, parent_inode : usize) -> usize{
+        let inode_index = self.get_inode();//分配一个inode
+        let mut dir = DirectoryEntry::new(name,FileType::Directory, inode_index as u32, 0);
+        let (dir_data,dir_size) = dir.to_bytes();  
+        let (block_index,offset,i_block_index) = self.get_block_for_dir(parent_inode, dir_size);//找到写入的块
+        self.data_block[block_index].write(&dir_data, offset);
+        self.inode_table[parent_inode].inode_update(dir_size as i32,i_block_index,block_index as u32);
+        self.inode_bitmap.set(inode_index, true);
+        self.block_bitmap.set(block_index, true);
+        inode_index
+    }
+    //找到第一个还有容量的块能够写入文件夹的块，用于写入文件夹
+    pub fn get_block_for_dir(&self,inode_index : usize,dir_byte : u16) -> (usize, usize, usize) {
+        //先实现直接指针的，todo多级指针
+        let mut inode_index = 0;
+        for i in self.inode_table[inode_index].direct_pointer {
+            if let Some(val) = i{
+                let free_bytes = self.data_block[val as usize].count_free_bytes();
+                if free_bytes > dir_byte {
+                    return (val as usize, BLOCK_SIZE - free_bytes as usize,inode_index);
+                }
+                inode_index += 1;
+            }
+            
+        }
+        (0,0,0)
+    }
 
-
-        let index = self.inode_table[parent_inode].get_index();
-        let mut self_inode = Inode::new();
-        let mut child_inode = Inode::new();
-        let dir = DirectoryEntry::new(name,FileType::Directory, index_node, size);
-
+    pub fn get_inode_index(&mut self,inode_index : usize) -> i32{
+        self.inode_table[inode_index].get_index()
     }
     fn get_inode(&mut self) -> usize{
-        match self.inode_bitmap.free_idx() {
+        match self.inode_bitmap.free_index() {
             Some(index) => return index,
             None => {
                 self.inode_bitmap.set(self.inode_table.len()-1, true);
@@ -106,12 +133,9 @@ impl BlockGroup {
             }
         }
     }    
-    pub fn get_inode_index(&mut self,inode_index : usize) -> i32{
-        self.inode_table[inode_index].get_index()
-    }
     //找到空的块
-    pub fn get_block(&mut self) -> u32 {
-        if let Some(index) = self.block_bitmap.free_idx() {
+    pub fn get_block_for_file(&mut self) -> u32 {
+        if let Some(index) = self.block_bitmap.free_index() {
             return index as u32;
         }
         self.block_bitmap.set(self.data_block.len(), true);
@@ -119,31 +143,31 @@ impl BlockGroup {
         return self.data_block.len() as u32 ;
     }
 
+
     fn bg_update(&mut self,block_index: usize,inode_index : usize){
         
          self.block_bitmap.set(block_index, true);
          self.inode_bitmap.set(inode_index, true);
     }
-    pub fn write_dir(&mut self, dir : DirectoryEntry, parent_inode : usize){
-        let dir_data = bincode::serialize(&dir).unwrap();//把数据序列化
-        let dir_size = dir_data.len();//这里得到的是字节数
-        let (num_block,offset) = ((dir_size + BLOCK_SIZE - 1) / BLOCK_SIZE, dir_size % BLOCK_SIZE);
-        let inode_index= self.get_inode();//分配了一个inode
-        for i in 0..num_block {
-            let start = i * BLOCK_SIZE;
-            let end = min(start+BLOCK_SIZE, dir_size);
-            let block_data = &dir_data[start..end];
-            let block_index = self.write_to_block(block_data);
-            self.inode_table[inode_index].inode_update(block_data.len() as u32,inode_index, block_index as u32);
-            self.bg_update(block_index, inode_index);
-        }
-        self.group_descriper_table.gdt_update(1, 1,1);
+    // pub fn write_dir(&mut self, dir : DirectoryEntry, parent_inode : usize){
+    //     let dir_data = bincode::serialize(&dir).unwrap();//把数据序列化
+    //     let dir_size = dir_data.len();//这里得到的是字节数
+    //     let (num_block,offset) = ((dir_size + BLOCK_SIZE - 1) / BLOCK_SIZE, dir_size % BLOCK_SIZE);
+    //     let inode_index= self.get_inode();//分配了一个inode
+    //     for i in 0..num_block {
+    //         let start = i * BLOCK_SIZE;
+    //         let end = min(start+BLOCK_SIZE, dir_size);
+    //         let block_data = &dir_data[start..end];
+    //         let block_index = self.write_to_block(block_data);
+    //         self.inode_table[inode_index].inode_update(block_data.len() as i32,inode_index, block_index as u32);
+    //         self.bg_update(block_index, inode_index);
+    //     }
+    //     self.group_descriper_table.gdt_update(1, 1,1);
 
-    }
+    // }
     //将文件写入数据块中
-    pub fn write_to_block(&mut self,data :&[u8]) -> usize{
-        let block_index = self.get_block();
-        self.data_block[block_index as usize].write(&data);
+    pub fn write_to_block(&mut self,data :&[u8],block_index: usize,offset : usize) -> usize{
+        self.data_block[block_index as usize].write(&data,offset);
         return block_index as usize;
     }
 }
@@ -228,12 +252,11 @@ impl Inode {
         -1 
     }
 
-    pub fn inode_update(&mut self, size : u32,index : usize,block_index : u32) {
-        self.i_size = size;
+    pub fn inode_update(&mut self, size : i32,index : usize, block_index : u32) {
+        self.i_size += (size + self.i_size as i32) as u32;
         self.direct_pointer[index] = Option::Some(block_index);
         self.i_ctime = get_current_time();
     }
-
 }
 
 
@@ -247,12 +270,30 @@ impl DataBlock {
             data:[0; BLOCK_SIZE as usize]
         }
     }
-    pub fn write(&mut self,data: &[u8]) {
+    pub fn write(&mut self,data: &[u8],offset : usize) {
         for (i, &byte) in data.iter().enumerate().take(BLOCK_SIZE) {
             self.data[i] = byte;
         } 
     }
-    pub fn unused_
+    pub fn count_free_bytes(&self) -> u16{
+        let mut used_byte = 0;
+        for &byte in self.data.iter() {
+            if byte != 0x00 {
+            }
+            else {
+                break;
+            }
+        }
+        return (BLOCK_SIZE - used_byte) as u16;
+    }
+    pub fn get_dir_name(&self) -> Vec<DirectoryEntry>{
+        let offset = 0;
+        while offset < BLOCK_SIZE {
+            let file_size = 
+        }
+        vec![]
+    }
+
     
 }
 
