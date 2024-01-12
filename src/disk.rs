@@ -1,3 +1,4 @@
+use bincode::config::BigEndian;
 use fuser::Filesystem;
 use crate::file::*;
 use crate::block::{BlockGroup,BootBlock,SuperBlock, self};
@@ -97,8 +98,8 @@ impl EXT2FS {
         }
 
     }
-    pub fn ls(&self) { 
-        
+    pub fn ls(&self, parent_inode : usize,block_group_index : usize) { 
+        self.blocks[block_group_index].bg_list(parent_inode);
     }
 
     pub fn get_block_group(&self) -> Option<usize>{
@@ -106,8 +107,6 @@ impl EXT2FS {
             .iter()
             .position(|x| !x.full())
     }
-
-
 
     pub fn cd() {
 

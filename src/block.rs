@@ -1,5 +1,5 @@
 use core::num;
-use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min};
+use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min, sync::Arc};
 use bincode;
 use serde::de::value::SeqDeserializer;
 
@@ -78,12 +78,14 @@ impl BlockGroup {
     }
 
     pub fn bg_list(&self,parent_inode : usize) {
+        let mut all_dirs:Vec<DirectoryEntry> = vec![];
         for index in self.inode_table[parent_inode].direct_pointer{
-
+            if let Some(i_block) = index {
+                all_dirs.append(&mut self.data_block[i_block as usize].get_all_dirs_name());
+            }
         }
-        for block in &self.data_block {
-                let file_name =  block.get_file().name;
-                print!("{} ",file_name);
+        for it in all_dirs {
+            print!("{} ",it.name);
         }
     }
     pub fn bg_mkdir(&mut self, name : String, parent_inode : usize){
@@ -286,11 +288,16 @@ impl DataBlock {
         }
         return (BLOCK_SIZE - used_byte) as u16;
     }
-    pub fn get_dir_name(&self) -> Vec<DirectoryEntry>{
-        let offset = 0;
+    pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry>{
+        let mut offset = 0;
+        let mut dir_vec : Vec<DirectoryEntry> = vec![];
         while offset < BLOCK_SIZE {
-            let file_size = 
-        }
+            let file_size : usize = bincode::deserialize(&self.data[4+offset..6+offset]).unwrap();
+            if file_size == 0 {break;}
+            let dir : DirectoryEntry  = bincode::deserialize(&self.data[offset..offset+file_size]).unwrap();
+            dir_vec.push(dir);
+            offset += file_size;
+        }   
         vec![]
     }
 
