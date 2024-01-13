@@ -2,12 +2,14 @@ use core::num;
 use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min, sync::Arc, ops::Index};
 use bincode;
 use serde::de::value::SeqDeserializer;
-
 use crate::{file::*, block, bitmap::*};
+
 const BLOCK_SIZE : usize = 1024; //每个数据块的大小为1kB
 //一个块的大小控制了，inode和bitmap的位图的大就是一个块的大小
 //那么块的数据也就确定了，1024*8
 const BLOCK_COUNT : usize = BLOCK_SIZE * 8;
+
+
 //part 1
 pub struct BootBlock {
     
@@ -77,6 +79,10 @@ impl BlockGroup {
         self.block_bitmap.free_index() == None
     }
 
+
+    pub fn write_file(&mut self,parent_inode : usize,) {
+        
+    }
     pub fn bg_list(&self,parent_inode : usize) {
         let mut all_dirs:Vec<DirectoryEntry> = vec![];
         for index in self.inode_table[parent_inode].direct_pointer{
@@ -308,13 +314,6 @@ impl DataBlock {
         }   
         vec![]
     }
-
-    // pub fn lookup_dir() -> Option<u32>{
-    //     let mut offset : usize = 0;
-    //     while offset < BLOCK_SIZE {
-            
-    //     }
-    // }
 
     pub fn rmdir_from_data_block(&mut self,dir_name : &String){
         let mut offset = 0; 

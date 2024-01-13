@@ -4,9 +4,9 @@ use crate::file::*;
 use crate::block::{BlockGroup,BootBlock,SuperBlock, self};
 pub struct EXT2FS{
     //boot_block : Boot_Block,
-    blocks : Vec<BlockGroup>,
-    current_directory : String,
-    current_inode_index : u32,
+    block_groups : Vec<BlockGroup>,
+    path : String,
+    current_inode_index : usize,
     user_name : String,
     password : String
 }
@@ -35,6 +35,9 @@ impl Filesystem for EXT2FS {
         
     }
 
+
+
+
     fn read(
             &mut self,
             _req: &fuser::Request<'_>,
@@ -53,12 +56,12 @@ impl Filesystem for EXT2FS {
             &mut self,
             _req: &fuser::Request<'_>,
             _parent: u64,
-            _name: &std::ffi::OsStr,
+            name: &std::ffi::OsStr,
             _mode: u32,
             _umask: u32,
             reply: fuser::ReplyEntry,
         ) {
-        let name = _name.to_string_lossy().into_owned();
+        let name = name.to_string_lossy().into_owned();
         let block_group_index = match self.get_block_group() {
             Some(index) => index,
             None => {
@@ -92,15 +95,15 @@ impl EXT2FS {
         EXT2FS{
             //boot_block : boot,
             blocks : vec![root_block],
-            current_directory : "root".to_string(),
+            path : "root".to_string(),
             user_name : name,
             password : pwd,
             current_inode_index : 0,
         }
 
     }
-    pub fn ls(&self, parent_inode : usize,block_group_index : usize) { 
-        self.blocks[block_group_index].bg_list(parent_inode);
+    pub fn ls(&self,block_group_index : usize) { 
+        self.blocks[block_group_index].bg_list(self.current_inode_index);
     }
 
     pub fn get_block_group(&self) -> Option<usize>{
