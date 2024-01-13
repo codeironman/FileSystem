@@ -88,6 +88,12 @@ impl BlockGroup {
             print!("{} ",it.name);
         }
     }
+    pub fn bg_rmdir(&mut self, parent_inode : usize){
+        for block in self.inode_table[parent_inode].direct_pointer {
+            
+        }
+    }
+
     pub fn bg_mkdir(&mut self, name : String, parent_inode : usize){
         let child_inode = self.add_entry_to_directory(name, parent_inode);
         self.add_entry_to_directory(".".to_string(), child_inode);
@@ -292,13 +298,31 @@ impl DataBlock {
         let mut offset = 0;
         let mut dir_vec : Vec<DirectoryEntry> = vec![];
         while offset < BLOCK_SIZE {
-            let file_size : usize = bincode::deserialize(&self.data[4+offset..6+offset]).unwrap();
+            let file_size : usize = bincode::deserialize(&self.data[4+offset..6+offset]).unwrap();//从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {break;}
             let dir : DirectoryEntry  = bincode::deserialize(&self.data[offset..offset+file_size]).unwrap();
             dir_vec.push(dir);
             offset += file_size;
         }   
         vec![]
+    }
+    pub fn rmdir_from_data_block(&mut self,dir_name : String){
+        let mut offset = 0; 
+        while offset < BLOCK_SIZE {
+            let file_size : usize = bincode::deserialize(&self.data[4+offset..6+offset]).unwrap();
+            let dir : DirectoryEntry = bincode::deserialize(&self.data[offset..offset+file_size]).unwrap();
+            if dir.name == dir_name {
+                self.delete_some_block(offset, file_size);
+                break;
+            }
+            offset += file_size;
+        }
+    }
+    //todo这个部分删除数据块的部分还需要在考虑一下，直接覆盖时间复杂度太高
+    pub fn delete_some_block(&mut self,offset : usize, block_count : usize){
+        for i in offset..BLOCK_SIZE-block_count {
+            self.data[i] = self.data[i + block_count]; 
+        }
     }
 
     

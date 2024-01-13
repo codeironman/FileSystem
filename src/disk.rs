@@ -73,7 +73,7 @@ impl Filesystem for EXT2FS {
 
     }
     fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
-        
+        self.blocks[0].bg_list(_parent as usize);
     }
 
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
