@@ -1,4 +1,9 @@
 use bincode::config::BigEndian;
+use std::collections::btree_map::Entry;
+use std::collections::btree_set::Union;
+use std::{usize, result};
+
+use bincode::Error;
 use fuser::Filesystem;
 use crate::file::*;
 use crate::block::{BlockGroup,BootBlock,SuperBlock, self};
@@ -11,12 +16,48 @@ pub struct EXT2FS{
     password : String
 }
 
-
-
-
 impl Filesystem for EXT2FS {
     fn init( &mut self, _req: &fuser::Request<'_>, _config: &mut fuser::KernelConfig) -> Result<(), std::ffi::c_int> {
         Ok(())
+    }
+
+    fn create(
+            &mut self,
+            _req: &fuser::Request<'_>,
+            _parent: u64,
+            _name: &std::ffi::OsStr,
+            _mode: u32,
+            _umask: u32,
+            _flags: i32,
+            reply: fuser::ReplyCreate,
+        ) {
+        
+    }
+
+    fn lookup(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEntry) {
+        
+    }
+
+    fn readdir(
+            &mut self,
+            _req: &fuser::Request<'_>,
+            _ino: u64,
+            _fh: u64,
+            _offset: i64,
+            mut reply: fuser::ReplyDirectory,
+        ) {
+
+        for (i,entry) in self.block_groups[0].bg_list(_ino).into_iter().enumerate().skip(_offset as usize){
+            if reply.add(entry.inode as u64, (i+1) as i64, entry.get_type(), entry.get_name()){
+                break;
+            }
+        }
+        reply.ok();
+    }
+
+    fn getattr(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyAttr) {
+        self.block_groups[0].bg_getattr(_ino);
+
     }
 
     fn write(
@@ -65,19 +106,18 @@ impl Filesystem for EXT2FS {
         let block_group_index = match self.get_block_group() {
             Some(index) => index,
             None => {
+                //需要新建一个块
                 let block_group = BlockGroup::new();
-                self.blocks.push(block_group);
-                self.blocks.len() - 1
+                self.block_groups.push(block_group);
+                self.block_groups.len() - 1
             },
         };
-        //需要新建一个块
-        self.blocks[block_group_index].bg_mkdir(name, _parent as usize);
-
-
+        self.block_groups[block_group_index].bg_mkdir(name, _parent as usize);
     }
+
     fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
         let dir_name = _name.to_string_lossy().into_owned();
-        self.blocks[0].bg_rmdir(_parent as usize, dir_name)
+        self.block_groups[0].bg_rmdir(_parent as usize, dir_name)
     }
 
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
@@ -94,7 +134,7 @@ impl EXT2FS {
         //将root文件夹放入第一个大块中
         EXT2FS{
             //boot_block : boot,
-            blocks : vec![root_block],
+            block_groups : vec![root_block],
             path : "root".to_string(),
             user_name : name,
             password : pwd,
@@ -102,12 +142,9 @@ impl EXT2FS {
         }
 
     }
-    pub fn ls(&self,block_group_index : usize) { 
-        self.blocks[block_group_index].bg_list(self.current_inode_index);
-    }
 
     pub fn get_block_group(&self) -> Option<usize>{
-        self.blocks
+        self.block_groups
             .iter()
             .position(|x| !x.full())
     }
@@ -124,6 +161,13 @@ impl EXT2FS {
     pub fn exitsys() {
 
     }
+
+}
+
+pub fn cal_group_block(inode_index: usize) -> (usize, usize) {
+    let inode_block_index = inode_index / block::BLOCK_COUNT;
+    let inode_offset = inode_index % block::BLOCK_COUNT;
+    (inode_block_index, inode_offset)
 }
 
 
