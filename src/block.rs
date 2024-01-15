@@ -80,9 +80,12 @@ impl BlockGroup {
     }
 
 
-    pub fn write_file(&mut self,parent_inode : usize,) {
-        
+    pub fn write_file(&mut self,parent_inode : usize,data :&[u8]) {
+        let inode_index = self.inode_table[parent_inode].get_index();
+        let block_index = self.get_block_for_file();
+        self.data_block[block_index].write(data, 0);
     }
+
     pub fn bg_list(&self,parent_inode : usize) {
         let mut all_dirs:Vec<DirectoryEntry> = vec![];
         for index in self.inode_table[parent_inode].direct_pointer{
@@ -150,13 +153,13 @@ impl BlockGroup {
         }
     }    
     //找到空的块
-    pub fn get_block_for_file(&mut self) -> u32 {
+    pub fn get_block_for_file(&mut self) -> usize {
         if let Some(index) = self.block_bitmap.free_index() {
-            return index as u32;
+            return index;
         }
         self.block_bitmap.set(self.data_block.len(), true);
         self.data_block.push(DataBlock::new());
-        return self.data_block.len() as u32 ;
+        return self.data_block.len();
     }
 
 
@@ -288,7 +291,7 @@ impl DataBlock {
     }
     pub fn write(&mut self,data: &[u8],offset : usize) {
         for (i, &byte) in data.iter().enumerate().take(BLOCK_SIZE) {
-            self.data[i] = byte;
+            self.data[i + offset] = byte;
         } 
     }
     pub fn count_free_bytes(&self) -> u16{

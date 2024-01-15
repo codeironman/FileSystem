@@ -19,19 +19,30 @@ impl Filesystem for EXT2FS {
         Ok(())
     }
 
-    fn write(
+    fn getxattr(
             &mut self,
             _req: &fuser::Request<'_>,
             _ino: u64,
+            _name: &std::ffi::OsStr,
+            _size: u32,
+            reply: fuser::ReplyXattr,
+        ) {
+            
+        
+    }
+    fn write(
+            &mut self,
+            _req: &fuser::Request<'_>,
+            ino: u64,
             _fh: u64,
             _offset: i64,
-            _data: &[u8],
+            data: &[u8],
             _write_flags: u32,
             _flags: i32,
             _lock_owner: Option<u64>,
             reply: fuser::ReplyWrite,
         ) {
-        
+        self.block_groups[0].write_file(ino as usize, data)
         
     }
 
@@ -66,18 +77,29 @@ impl Filesystem for EXT2FS {
             Some(index) => index,
             None => {
                 let block_group = BlockGroup::new();
-                self.blocks.push(block_group);
-                self.blocks.len() - 1
+                self.block_groups.push(block_group);
+                self.block_groups.len() - 1
             },
         };
         //需要新建一个块
-        self.blocks[block_group_index].bg_mkdir(name, _parent as usize);
+        self.block_groups[block_group_index].bg_mkdir(name, _parent as usize);
 
 
     }
     fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
         let dir_name = _name.to_string_lossy().into_owned();
-        self.blocks[0].bg_rmdir(_parent as usize, dir_name)
+        self.block_groups[0].bg_rmdir(_parent as usize, dir_name)
+    }
+
+    fn readdir(
+            &mut self,
+            _req: &fuser::Request<'_>,
+            ino: u64,
+            _fh: u64,
+            _offset: i64,
+            reply: fuser::ReplyDirectory,
+        ) {
+            self.block_groups[0].bg_list(ino as usize);
     }
 
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
@@ -94,7 +116,7 @@ impl EXT2FS {
         //将root文件夹放入第一个大块中
         EXT2FS{
             //boot_block : boot,
-            blocks : vec![root_block],
+            block_groups : vec![root_block],
             path : "root".to_string(),
             user_name : name,
             password : pwd,
@@ -103,11 +125,10 @@ impl EXT2FS {
 
     }
     pub fn ls(&self,block_group_index : usize) { 
-        self.blocks[block_group_index].bg_list(self.current_inode_index);
     }
 
     pub fn get_block_group(&self) -> Option<usize>{
-        self.blocks
+        self.block_groups
             .iter()
             .position(|x| !x.full())
     }
