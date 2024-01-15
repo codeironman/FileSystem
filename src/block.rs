@@ -1,5 +1,5 @@
 use core::num;
-use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min, sync::Arc, ops::Index};
+use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min, sync::Arc};
 use bincode;
 use serde::de::value::SeqDeserializer;
 use crate::{file::*, block, bitmap::*};
@@ -79,6 +79,18 @@ impl BlockGroup {
         self.block_bitmap.free_index() == None
     }
 
+   pub fn read_file(&self,inode_index : usize) -> Vec<u8> {
+    let mut data:Vec<u8> = vec![];
+        for block_index in self.inode_table[inode_index].direct_pointer {
+            match block_index {
+                Some(index) => {
+                    data.extend_from_slice(self.data_block[index as usize].read());
+                },
+                None => ()
+            }
+            }
+        data
+   }
 
     pub fn write_file(&mut self,parent_inode : usize,data :&[u8]) {
         let inode_index = self.inode_table[parent_inode].get_index();
@@ -168,22 +180,6 @@ impl BlockGroup {
          self.block_bitmap.set(block_index, true);
          self.inode_bitmap.set(inode_index, true);
     }
-    // pub fn write_dir(&mut self, dir : DirectoryEntry, parent_inode : usize){
-    //     let dir_data = bincode::serialize(&dir).unwrap();//把数据序列化
-    //     let dir_size = dir_data.len();//这里得到的是字节数
-    //     let (num_block,offset) = ((dir_size + BLOCK_SIZE - 1) / BLOCK_SIZE, dir_size % BLOCK_SIZE);
-    //     let inode_index= self.get_inode();//分配了一个inode
-    //     for i in 0..num_block {
-    //         let start = i * BLOCK_SIZE;
-    //         let end = min(start+BLOCK_SIZE, dir_size);
-    //         let block_data = &dir_data[start..end];
-    //         let block_index = self.write_to_block(block_data);
-    //         self.inode_table[inode_index].inode_update(block_data.len() as i32,inode_index, block_index as u32);
-    //         self.bg_update(block_index, inode_index);
-    //     }
-    //     self.group_descriper_table.gdt_update(1, 1,1);
-
-    // }
     //将文件写入数据块中
     pub fn write_to_block(&mut self,data :&[u8],block_index: usize,offset : usize) -> usize{
         self.data_block[block_index as usize].write(&data,offset);
@@ -293,6 +289,10 @@ impl DataBlock {
         for (i, &byte) in data.iter().enumerate().take(BLOCK_SIZE) {
             self.data[i + offset] = byte;
         } 
+    }
+
+    pub fn read(&self) -> &[u8]{
+        &self.data
     }
     pub fn count_free_bytes(&self) -> u16{
         let mut used_byte = 0;

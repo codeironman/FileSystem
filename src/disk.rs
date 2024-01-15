@@ -42,8 +42,7 @@ impl Filesystem for EXT2FS {
             _lock_owner: Option<u64>,
             reply: fuser::ReplyWrite,
         ) {
-        self.block_groups[0].write_file(ino as usize, data)
-        
+        self.block_groups[0].write_file(ino as usize, data);
     }
 
 
@@ -52,7 +51,7 @@ impl Filesystem for EXT2FS {
     fn read(
             &mut self,
             _req: &fuser::Request<'_>,
-            _ino: u64,
+            ino: u64,
             _fh: u64,
             _offset: i64,
             _size: u32,
@@ -60,7 +59,8 @@ impl Filesystem for EXT2FS {
             _lock_owner: Option<u64>,
             reply: fuser::ReplyData,
         ) {
-        
+        let data = self.block_groups[0].read_file(ino as usize);
+        println!("{}",std::str::from_utf8(data.as_slice()).unwrap());
     }
 
     fn mkdir(
@@ -124,9 +124,6 @@ impl EXT2FS {
         }
 
     }
-    pub fn ls(&self,block_group_index : usize) { 
-    }
-
     pub fn get_block_group(&self) -> Option<usize>{
         self.block_groups
             .iter()
