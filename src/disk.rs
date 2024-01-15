@@ -18,18 +18,6 @@ impl Filesystem for EXT2FS {
     fn init( &mut self, _req: &fuser::Request<'_>, _config: &mut fuser::KernelConfig) -> Result<(), std::ffi::c_int> {
         Ok(())
     }
-
-    fn getxattr(
-            &mut self,
-            _req: &fuser::Request<'_>,
-            _ino: u64,
-            _name: &std::ffi::OsStr,
-            _size: u32,
-            reply: fuser::ReplyXattr,
-        ) {
-            
-        
-    }
     fn write(
             &mut self,
             _req: &fuser::Request<'_>,

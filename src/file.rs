@@ -37,6 +37,17 @@ impl DirectoryEntry {
         self.file_size = dir_size;
         (dir_data,dir_size)
     }   
+    pub fn get_type(&self) -> fuser::FileType{
+        match self.file_type {
+            FileType::Regular => fuser::FileType::RegularFile,
+            FileType::Directory => fuser::FileType::Directory,
+            // fuser 不存在 Unknown 这个 type
+            FileType::Unknow => fuser::FileType::RegularFile,
+        }
+    }
+    pub fn get_name(&self) -> String{
+        self.name.clone()
+    }
 
 }
 
