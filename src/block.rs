@@ -101,7 +101,9 @@ impl BlockGroup {
                 all_dirs.append(&mut self.data_block[i_block as usize].get_all_dirs_name());
             }
         }
-        all_dirs
+        for it in &all_dirs {
+            print!("{}",it.name);
+        }
     }
     pub fn bg_rmdir(&mut self, parent_inode: usize, name: String) {
         for block_index in self.inode_table[parent_inode].direct_pointer {
