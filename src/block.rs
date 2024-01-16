@@ -91,8 +91,8 @@ impl BlockGroup {
             group_descriper_table: GroupDescriperTable::new(),
             inode_bitmap: Bitmap::new(BLOCK_SIZE),
             block_bitmap: Bitmap::new(BLOCK_SIZE),
-            inode_table: vec![Inode::new(); BLOCK_SIZE*8],
-            data_block: vec![DataBlock::new(); BLOCK_SIZE*8],
+            inode_table: vec![Inode::new(); BLOCK_SIZE * 8],
+            data_block: vec![DataBlock::new(); BLOCK_SIZE * 8],
         }
     }
 
@@ -100,10 +100,15 @@ impl BlockGroup {
         self.block_bitmap.free_index() == None
     }
 
-    pub fn read_file_offset_size(&mut self, inode_index: usize,offset:usize,mut size:usize) -> Vec<u8> {
+    pub fn read_file_offset_size(
+        &mut self,
+        inode_index: usize,
+        offset: usize,
+        mut size: usize,
+    ) -> Vec<u8> {
         let inode = self.inode_table.get(inode_index - 1).unwrap();
-        size = min(offset + size, inode.i_size as usize)- offset;
-        let mut data: Vec<u8> = vec![0;size];
+        size = min(offset + size, inode.i_size as usize) - offset;
+        let mut data: Vec<u8> = vec![0; size];
         let (mut read_entry_block_idx, mut inner_offset) = convert_offset(offset);
 
         let mut read_pos = 0;
@@ -128,7 +133,7 @@ impl BlockGroup {
         let inode = self.inode_table.get_mut(inode_idx - 1).unwrap();
         inode.inode_update_size(max(inode.i_size, (offset + data.len()) as u32));
         let (mut write_entry_block_idx, mut inner_offset) = convert_offset(offset);
-        
+
         let mut write_pos = 0;
         loop {
             let block = self.get_block_by_inode_rel_block(inode_idx, write_entry_block_idx);
@@ -163,20 +168,20 @@ impl BlockGroup {
         }
     }
 
-    pub fn bg_list(&self, parent_inode: usize) {
+    pub fn bg_list(&self, parent_inode: usize) -> Vec<DirectoryEntry> {
+        dbg!(self.inode_table.get(parent_inode as usize - 1));
         let mut all_dirs: Vec<DirectoryEntry> = vec![];
-        for index in self.inode_table[parent_inode as usize].direct_pointer {
+        dbg!(self.inode_table[parent_inode as usize - 1].direct_pointer);
+        for index in self.inode_table[parent_inode as usize - 1].direct_pointer {
             if let Some(i_block) = index {
                 all_dirs.append(&mut self.data_block[i_block as usize].get_all_dirs_name());
             }
         }
-        for it in &all_dirs {
-            print!("{}", it.name);
-        }
+        dbg!(all_dirs)
     }
 
     pub fn bg_rmdir(&mut self, parent_inode: usize, name: String) {
-        for block_index in self.inode_table[parent_inode].direct_pointer {
+        for block_index in self.inode_table[parent_inode - 1].direct_pointer {
             if let Some(index) = block_index {
                 self.data_block[index as usize].rmdir_from_data_block(&name);
             }
@@ -189,49 +194,56 @@ impl BlockGroup {
         self.add_entry_to_directory("..".to_string(), child_inode);
     }
 
-
-    pub fn bg_lookup(&mut self, name : String, parent_inode : usize) -> Option<fuser::FileAttr>{
-        for block_index in self.inode_table[parent_inode].direct_pointer {
+    pub fn bg_lookup(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
+        for block_index in self
+            .inode_table
+            .get(parent_inode - 1)
+            .unwrap()
+            .direct_pointer
+        {
             if let Some(index) = block_index {
-            let data_block = &self.data_block[index as usize];
-            let dirs = data_block.get_all_dirs_name();
-            for dir in dirs {
-                if dir.name == name {
-                    let inode = &self.inode_table[index as usize];
-                    return 
-                    Some(fuser::FileAttr {
-                        ino: index as u64,
-                        size: inode.i_size as u64,
-                        // todo
-                        blocks: 0,
-                        atime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_atime as u64),
-                        mtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_mtime as u64),
-                        ctime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
-                        crtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
-                        kind: match inode.i_mode & 0xf000 {
-                            0x8000 => fuser::FileType::RegularFile,
-                            0x4000 => fuser::FileType::Directory,
-                            _ => fuser::FileType::RegularFile,
-                        },
-                        perm: inode.i_mode & 0x0fff,
-                        nlink: inode.i_links_count as u32,
-                        uid: inode.i_uid as u32,
-                        gid: inode.i_gid as u32,
-                        // 不熟这些 attr 先不实现
-                        rdev: 0,
-                        flags: 0,
-                        blksize: BLOCK_SIZE as u32,
-                        padding: 0,
-                    });
+                let data_block = &self.data_block[index as usize];
+                let dirs = data_block.get_all_dirs_name();
+                for dir in dirs {
+                    if dir.name == name {
+                        let inode = &self.inode_table[index as usize - 1];
+                        return Some(fuser::FileAttr {
+                            ino: index as u64,
+                            size: inode.i_size as u64,
+                            // todo
+                            blocks: 0,
+                            atime: SystemTime::UNIX_EPOCH
+                                + std::time::Duration::from_secs(inode.i_atime as u64),
+                            mtime: SystemTime::UNIX_EPOCH
+                                + std::time::Duration::from_secs(inode.i_mtime as u64),
+                            ctime: SystemTime::UNIX_EPOCH
+                                + std::time::Duration::from_secs(inode.i_ctime as u64),
+                            crtime: SystemTime::UNIX_EPOCH
+                                + std::time::Duration::from_secs(inode.i_ctime as u64),
+                            kind: match inode.i_mode & 0xf000 {
+                                0x8000 => fuser::FileType::RegularFile,
+                                0x4000 => fuser::FileType::Directory,
+                                _ => fuser::FileType::RegularFile,
+                            },
+                            perm: inode.i_mode & 0x0fff,
+                            nlink: inode.i_links_count as u32,
+                            uid: inode.i_uid as u32,
+                            gid: inode.i_gid as u32,
+                            // 不熟这些 attr 先不实现
+                            rdev: 0,
+                            flags: 0,
+                            blksize: BLOCK_SIZE as u32,
+                            padding: 0,
+                        });
+                    }
                 }
             }
         }
-    }
         None
     }
-    
+
     pub fn bg_getattr(&self, inode_index: usize) -> fuser::FileAttr {
-        let inode = self.inode_table.get(inode_index-1).unwrap();
+        let inode = self.inode_table.get(inode_index - 1).unwrap();
         fuser::FileAttr {
             ino: inode_index as u64,
             size: inode.i_size as u64,
@@ -258,7 +270,7 @@ impl BlockGroup {
         }
     }
 
-    pub fn bg_create(&mut self,name : String,parent_inode : usize) -> Option<fuser::FileAttr>{
+    pub fn bg_create(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode);
         Some(self.bg_getattr(child_inode))
     }
@@ -268,8 +280,34 @@ impl BlockGroup {
         let mut dir = DirectoryEntry::new(name, FileType::Directory, inode_index as u32, 0);
         let (dir_data, dir_size) = dir.to_bytes();
 
-        let inode = self.inode_table.get(parent_inode - 1).unwrap();
-        self.write_file_offset(parent_inode, inode.i_size as usize, &dir_data);
+        for block_index in self
+            .inode_table
+            .get(parent_inode - 1)
+            .unwrap()
+            .direct_pointer
+            .iter()
+            .take_while(|x: &&Option<u32>| x.is_some())
+        {
+            if let Some(index) = block_index {
+                let data_block = &mut self.data_block[index.clone() as usize];
+                if data_block.count_free_bytes() >= dir_size as u16 {
+                    data_block.write(
+                        &dir_data,
+                        BLOCK_SIZE - data_block.count_free_bytes() as usize,
+                    );
+                    return inode_index;
+                }
+            }
+        }
+
+        let new_block_index = self.get_block_for_file();
+        let data_block = &mut self.data_block[new_block_index];
+        data_block.write(&dir_data, 0);
+        *self.inode_table[parent_inode - 1]
+            .direct_pointer
+            .iter_mut()
+            .find(|x| x.is_none())
+            .unwrap() = Some(new_block_index as u32);
 
         inode_index
     }
@@ -341,7 +379,7 @@ pub enum Filetype {
     // SymbolicLink = 0xA000,
 }
 
-impl Clone for Inode{
+impl Clone for Inode {
     fn clone(&self) -> Self {
         Inode {
             i_mode: self.i_mode,
@@ -388,7 +426,7 @@ impl Inode {
     }
 }
 
-impl Clone for DataBlock{
+impl Clone for DataBlock {
     fn clone(&self) -> Self {
         DataBlock {
             data: self.data.clone(),
@@ -427,18 +465,19 @@ impl DataBlock {
     pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry> {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
-        while offset < BLOCK_SIZE {
-            let file_size: usize =
-                bincode::deserialize(&self.data[4 + offset..6 + offset]).unwrap(); //从第四个字节开始解析2个字节为文件的大小
+        while offset + 6 <= BLOCK_SIZE {
+            dbg!(&self.data[..50]);
+            let file_size: u16 =
+                bincode::deserialize(dbg!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {
                 break;
             }
             let dir: DirectoryEntry =
-                bincode::deserialize(&self.data[offset..offset + file_size]).unwrap();
+                bincode::deserialize(&self.data[offset..offset + file_size as usize]).unwrap();
             dir_vec.push(dir);
-            offset += file_size;
+            offset += file_size as usize;
         }
-        dir_vec
+        dbg!(dir_vec)
     }
 
     pub fn rmdir_from_data_block(&mut self, dir_name: &String) {

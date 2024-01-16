@@ -1,7 +1,7 @@
 use std::iter::StepBy;
 
 use serde::{Deserialize, Serialize};
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum FileType {
     Unknow = 0,
     Regular = 1, //普通文件
@@ -12,7 +12,7 @@ pub enum FileType {
                  // Socket = 6,
                  // SymbolicLink = 7,
 }
-#[derive(Serialize, Deserialize)] //能够派生到自己定义的文件
+#[derive(Serialize, Deserialize, Debug)] //能够派生到自己定义的文件
 pub struct DirectoryEntry {
     pub inode: u32, //指的是这个目录文件指向的inode
     file_size: u16, //按照

@@ -103,10 +103,13 @@ impl Filesystem for EXT2FS {
         ino: u64,
         _fh: u64,
         _offset: i64,
-        reply: fuser::ReplyDirectory,
+        mut reply: fuser::ReplyDirectory,
     ) {
         println!("readdir called for ino={}", ino);
-        self.block_groups.bg_list(ino as usize);
+        self.block_groups.bg_list(ino as usize).iter().skip(_offset as usize).find(|f|{
+            reply.add(f.inode as u64, _offset, f.get_type(), &f.get_name())
+        });
+
         reply.ok();
     }
 
@@ -131,6 +134,7 @@ impl Filesystem for EXT2FS {
         let dir_name = name.to_string_lossy().into_owned();
         let attr = self.block_groups.bg_lookup(dir_name, parent as usize);
         if let Some(file) = attr {
+            dbg!(file);
             reply.entry(&Duration::from_secs(1), &file, 0);
         }
     }
@@ -164,24 +168,13 @@ impl Filesystem for EXT2FS {
 
 impl EXT2FS {
     pub fn new(name: String, pwd: String) -> Self {
-        //新建一个大块
-        let root_block = BlockGroup::new_root();
-        //将root文件夹放入第一个大块中
         EXT2FS {
             //boot_block : boot,
-            block_groups: root_block,
+            block_groups: BlockGroup::new_root(),
             path: "root".to_string(),
             user_name: name,
             password: pwd,
             current_inode_index: 0,
         }
     }
-    // pub fn get_block_group(&self) -> Option<usize> {
-    //     self.block_groups.iter().position(|x| !x.full())
-    // }
-
-    pub fn cd() {}
-    pub fn create() {}
-    pub fn close() {}
-    pub fn exitsys() {}
 }
