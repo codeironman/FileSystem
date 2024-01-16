@@ -1,11 +1,11 @@
-use std::f32::consts::E;
-use std::time::{self, Duration};
 use crate::block::{self, BlockGroup, BootBlock, SuperBlock};
 use crate::file::*;
 use bincode::config::BigEndian;
 use fuser::Filesystem;
 use log::debug;
 use log::{info, logger};
+use std::f32::consts::E;
+use std::time::{self, Duration};
 pub struct EXT2FS {
     //boot_block : Boot_Block,
     block_groups: BlockGroup,
@@ -37,7 +37,8 @@ impl Filesystem for EXT2FS {
         reply: fuser::ReplyWrite,
     ) {
         println!("write called for ino={}", ino);
-        self.block_groups.write_file_offset(ino as usize, offset as usize, data);
+        self.block_groups
+            .write_file_offset(ino as usize, offset as usize, data);
         reply.written(data.len() as u32);
     }
 
@@ -53,7 +54,9 @@ impl Filesystem for EXT2FS {
         reply: fuser::ReplyData,
     ) {
         println!("read called for ino={}", ino);
-        let data = self.block_groups.read_file(ino as usize);
+        let data =
+            self.block_groups
+                .read_file_offset_size(ino as usize, _offset as usize, _size as usize);
         println!("{}", std::str::from_utf8(data.as_slice()).unwrap());
         reply.data(&data);
     }
@@ -76,6 +79,7 @@ impl Filesystem for EXT2FS {
         //需要新建一个块
         self.block_groups.bg_mkdir(name, _parent as usize);
     }
+
     fn rmdir(
         &mut self,
         _req: &fuser::Request<'_>,
@@ -109,7 +113,7 @@ impl Filesystem for EXT2FS {
     fn getattr(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyAttr) {
         println!("getattr called for ino={}", _ino);
         let attr = self.block_groups.bg_getattr(_ino as usize);
-        reply.attr(&Duration::new(0, 0),&attr);
+        reply.attr(&Duration::new(0, 0), &attr);
     }
 
     fn lookup(
@@ -125,17 +129,36 @@ impl Filesystem for EXT2FS {
             name.to_string_lossy()
         );
         let dir_name = name.to_string_lossy().into_owned();
-        let attr = self.block_groups.bg_lookup(dir_name, parent as usize );
+        let attr = self.block_groups.bg_lookup(dir_name, parent as usize);
         if let Some(file) = attr {
             reply.entry(&Duration::from_secs(1), &file, 0);
         }
-
     }
 
-
-
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
-    
+    }
+
+    fn create(
+            &mut self,
+            _req: &fuser::Request<'_>,
+            _parent: u64,
+            _name: &std::ffi::OsStr,
+            _mode: u32,
+            _umask: u32,
+            _flags: i32,
+            reply: fuser::ReplyCreate,
+        ) {
+            println!(
+                "create called for parent={}, name={}",
+                _parent,
+                _name.to_string_lossy()
+            );
+            let file_name = _name.to_string_lossy().into_owned();
+            let attr = self.block_groups.bg_create(file_name, _parent as usize);
+            if let Some(file) = attr {
+                reply.created(&Duration::from_secs(0), &file, 0, 0, 0);
+            }
+        
     }
 }
 

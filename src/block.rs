@@ -100,24 +100,35 @@ impl BlockGroup {
         self.block_bitmap.free_index() == None
     }
 
-    pub fn read_file(&self, inode_index: usize) -> Vec<u8> {
-        let mut data: Vec<u8> = vec![];
-        for block_index in self.inode_table[inode_index].direct_pointer {
-            match block_index {
-                Some(index) => {
-                    data.extend_from_slice(self.data_block[index as usize].read());
-                }
-                None => (),
+    pub fn read_file_offset_size(&mut self, inode_index: usize,offset:usize,mut size:usize) -> Vec<u8> {
+        let inode = self.inode_table.get(inode_index - 1).unwrap();
+        size = min(offset + size, inode.i_size as usize)- offset;
+        let mut data: Vec<u8> = vec![0;size];
+        let (mut read_entry_block_idx, mut inner_offset) = convert_offset(offset);
+
+        let mut read_pos = 0;
+        loop {
+            let block = self.get_block_by_inode_rel_block(inode_index, read_entry_block_idx);
+            let read_count = min(BLOCK_SIZE - inner_offset, size - read_pos);
+
+            data[read_pos..read_pos + read_count]
+                .copy_from_slice(&block.read()[inner_offset..inner_offset + read_count]);
+            read_pos += read_count;
+            read_entry_block_idx += 1;
+            inner_offset = 0;
+            if read_pos >= size {
+                break;
             }
         }
+
         data
     }
 
     pub fn write_file_offset(&mut self, inode_idx: usize, offset: usize, data: &[u8]) {
         let inode = self.inode_table.get_mut(inode_idx - 1).unwrap();
         inode.inode_update_size(max(inode.i_size, (offset + data.len()) as u32));
-
         let (mut write_entry_block_idx, mut inner_offset) = convert_offset(offset);
+        
         let mut write_pos = 0;
         loop {
             let block = self.get_block_by_inode_rel_block(inode_idx, write_entry_block_idx);
@@ -218,6 +229,7 @@ impl BlockGroup {
     }
         None
     }
+    
     pub fn bg_getattr(&self, inode_index: usize) -> fuser::FileAttr {
         let inode = self.inode_table.get(inode_index-1).unwrap();
         fuser::FileAttr {
@@ -244,6 +256,11 @@ impl BlockGroup {
             blksize: BLOCK_SIZE as u32,
             padding: 0,
         }
+    }
+
+    pub fn bg_create(&mut self,name : String,parent_inode : usize) -> Option<fuser::FileAttr>{
+        let child_inode = self.add_entry_to_directory(name, parent_inode);
+        Some(self.bg_getattr(child_inode))
     }
 
     pub fn add_entry_to_directory(&mut self, name: String, parent_inode: usize) -> usize {
