@@ -49,6 +49,7 @@ pub struct GroupDescriperTable {
     bg_used_dirs_count: u16,
 }
 
+#[derive(Debug)]
 pub struct Inode {
     i_mode: u16, //16位置用于表示文件的类型和权限
     i_uid: u16,  //用户id
@@ -75,7 +76,7 @@ impl BlockGroup {
     pub fn new_root() -> Self {
         let mut bg = BlockGroup::new();
 
-        bg.inode_bitmap.set(1, true);
+        bg.inode_bitmap.set(0, true);
         let inode = bg.inode_table.get_mut(0).unwrap();
         // 777 dir
         inode.i_mode = 0x41ff;
@@ -218,7 +219,7 @@ impl BlockGroup {
         None
     }
     pub fn bg_getattr(&self, inode_index: usize) -> fuser::FileAttr {
-        let inode = &self.inode_table[inode_index];
+        let inode = self.inode_table.get(inode_index-1).unwrap();
         fuser::FileAttr {
             ino: inode_index as u64,
             size: inode.i_size as u64,

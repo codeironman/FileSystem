@@ -1,6 +1,5 @@
 use std::f32::consts::E;
-use std::time::Duration;
-
+use std::time::{self, Duration};
 use crate::block::{self, BlockGroup, BootBlock, SuperBlock};
 use crate::file::*;
 use bincode::config::BigEndian;
@@ -23,7 +22,6 @@ impl Filesystem for EXT2FS {
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), std::ffi::c_int> {
         println!("init called");
-        self.block_groups = BlockGroup::new_root();
         Ok(())
     }
     fn write(
@@ -110,7 +108,8 @@ impl Filesystem for EXT2FS {
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyAttr) {
         println!("getattr called for ino={}", _ino);
-        let inode = self.block_groups.bg_getattr(_ino as usize);
+        let attr = self.block_groups.bg_getattr(_ino as usize);
+        reply.attr(&Duration::new(0, 0),&attr);
     }
 
     fn lookup(
@@ -143,7 +142,7 @@ impl Filesystem for EXT2FS {
 impl EXT2FS {
     pub fn new(name: String, pwd: String) -> Self {
         //新建一个大块
-        let root_block = BlockGroup::new();
+        let root_block = BlockGroup::new_root();
         //将root文件夹放入第一个大块中
         EXT2FS {
             //boot_block : boot,
