@@ -10,7 +10,7 @@ use fuser::{Filesystem, MountOption};
 use log::{info, warn};
 
 fn main() {
-    let mountpoint = "/test2";
+    let mountpoint = "/Users/caofengyi/code/os/mount";
     let name = "123".to_string();
     let pw = "abc".to_string();
     let filesystem = EXT2FS::new(name, pw);

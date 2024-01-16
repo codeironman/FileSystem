@@ -64,7 +64,7 @@ impl Filesystem for EXT2FS {
     fn mkdir(
         &mut self,
         _req: &fuser::Request<'_>,
-        _parent: u64,
+        parent: u64,
         name: &std::ffi::OsStr,
         _mode: u32,
         _umask: u32,
@@ -72,12 +72,13 @@ impl Filesystem for EXT2FS {
     ) {
         println!(
             "mkdir called for parent={}, name={}",
-            _parent,
+            parent,
             name.to_string_lossy()
         );
         let name = name.to_string_lossy().into_owned();
         //需要新建一个块
-        self.block_groups.bg_mkdir(name, _parent as usize);
+        let attr = self.block_groups.bg_mkdir(name, parent as usize).unwrap();
+        reply.entry(&Duration::from_secs(1), &attr, 0);
     }
 
     fn rmdir(
@@ -112,11 +113,16 @@ impl Filesystem for EXT2FS {
 
         reply.ok();
     }
-
-    fn getattr(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyAttr) {
-        println!("getattr called for ino={}", _ino);
-        let attr = self.block_groups.bg_getattr(_ino as usize);
+    //tested 
+    fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
+        //println!("getattr called for ino={}", ino);
+        let attr = self.block_groups.bg_getattr(ino as usize);
+        //dbg!(attr);
         reply.attr(&Duration::new(0, 0), &attr);
+    }
+
+    fn opendir(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
+        dbg!("opendir");
     }
 
     fn lookup(
@@ -130,14 +136,18 @@ impl Filesystem for EXT2FS {
             "lookup called for parent={}, name={}",
             parent,
             name.to_string_lossy()
-        );
+        ); 
+        dbg!(name);
         let dir_name = name.to_string_lossy().into_owned();
-        let attr = self.block_groups.bg_lookup(dir_name, parent as usize);
+        dbg!(&dir_name);
+        let attr = self.block_groups.bg_lookup(dir_name.to_string(), parent as usize);
+        dbg!(attr);
         if let Some(file) = attr {
             dbg!(file);
             reply.entry(&Duration::from_secs(1), &file, 0);
         }
     }
+
 
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
     }

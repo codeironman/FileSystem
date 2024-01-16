@@ -10,7 +10,7 @@ use std::{
     mem,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
-    vec,
+    vec, f32::consts::E,
 };
 
 pub const BLOCK_SIZE: usize = 1024; //每个数据块的大小为1kB
@@ -169,9 +169,7 @@ impl BlockGroup {
     }
 
     pub fn bg_list(&self, parent_inode: usize) -> Vec<DirectoryEntry> {
-        dbg!(self.inode_table.get(parent_inode as usize - 1));
         let mut all_dirs: Vec<DirectoryEntry> = vec![];
-        dbg!(self.inode_table[parent_inode as usize - 1].direct_pointer);
         for index in self.inode_table[parent_inode as usize - 1].direct_pointer {
             if let Some(i_block) = index {
                 all_dirs.append(&mut self.data_block[i_block as usize].get_all_dirs_name());
@@ -188,10 +186,13 @@ impl BlockGroup {
         }
     }
 
-    pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) {
+    pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode);
-        self.add_entry_to_directory(".".to_string(), child_inode);
-        self.add_entry_to_directory("..".to_string(), child_inode);
+        let t = self.add_entry_to_directory(".".to_string(), child_inode);
+        dbg!(t);
+        let m = self.add_entry_to_directory("..".to_string(), child_inode);
+        dbg!(m);
+        Some(self.inode_table[child_inode - 1].get_file_attr(child_inode as u64))
     }
 
     pub fn bg_lookup(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
@@ -205,36 +206,9 @@ impl BlockGroup {
                 let data_block = &self.data_block[index as usize];
                 let dirs = data_block.get_all_dirs_name();
                 for dir in dirs {
-                    if dir.name == name {
+                    if dbg!(dir.name) == name {
                         let inode = &self.inode_table[index as usize - 1];
-                        return Some(fuser::FileAttr {
-                            ino: index as u64,
-                            size: inode.i_size as u64,
-                            // todo
-                            blocks: 0,
-                            atime: SystemTime::UNIX_EPOCH
-                                + std::time::Duration::from_secs(inode.i_atime as u64),
-                            mtime: SystemTime::UNIX_EPOCH
-                                + std::time::Duration::from_secs(inode.i_mtime as u64),
-                            ctime: SystemTime::UNIX_EPOCH
-                                + std::time::Duration::from_secs(inode.i_ctime as u64),
-                            crtime: SystemTime::UNIX_EPOCH
-                                + std::time::Duration::from_secs(inode.i_ctime as u64),
-                            kind: match inode.i_mode & 0xf000 {
-                                0x8000 => fuser::FileType::RegularFile,
-                                0x4000 => fuser::FileType::Directory,
-                                _ => fuser::FileType::RegularFile,
-                            },
-                            perm: inode.i_mode & 0x0fff,
-                            nlink: inode.i_links_count as u32,
-                            uid: inode.i_uid as u32,
-                            gid: inode.i_gid as u32,
-                            // 不熟这些 attr 先不实现
-                            rdev: 0,
-                            flags: 0,
-                            blksize: BLOCK_SIZE as u32,
-                            padding: 0,
-                        });
+                        return Some(inode.get_file_attr(index as u64));
                     }
                 }
             }
@@ -244,30 +218,7 @@ impl BlockGroup {
 
     pub fn bg_getattr(&self, inode_index: usize) -> fuser::FileAttr {
         let inode = self.inode_table.get(inode_index - 1).unwrap();
-        fuser::FileAttr {
-            ino: inode_index as u64,
-            size: inode.i_size as u64,
-            // todo
-            blocks: 0,
-            atime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_atime as u64),
-            mtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_mtime as u64),
-            ctime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
-            crtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
-            kind: match inode.i_mode & 0xf000 {
-                0x8000 => fuser::FileType::RegularFile,
-                0x4000 => fuser::FileType::Directory,
-                _ => fuser::FileType::RegularFile,
-            },
-            perm: inode.i_mode & 0x0fff,
-            nlink: inode.i_links_count as u32,
-            uid: inode.i_uid as u32,
-            gid: inode.i_gid as u32,
-            // 不熟这些 attr 先不实现
-            rdev: 0,
-            flags: 0,
-            blksize: BLOCK_SIZE as u32,
-            padding: 0,
-        }
+        inode.get_file_attr(inode_index as u64)
     }
 
     pub fn bg_create(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
@@ -279,8 +230,7 @@ impl BlockGroup {
         let inode_index = self.get_inode(); //分配一个inode
         let mut dir = DirectoryEntry::new(name, FileType::Directory, inode_index as u32, 0);
         let (dir_data, dir_size) = dir.to_bytes();
-
-        for block_index in self
+        for &block_index in self
             .inode_table
             .get(parent_inode - 1)
             .unwrap()
@@ -289,7 +239,7 @@ impl BlockGroup {
             .take_while(|x: &&Option<u32>| x.is_some())
         {
             if let Some(index) = block_index {
-                let data_block = &mut self.data_block[index.clone() as usize];
+                let data_block = &mut self.data_block[index as usize];
                 if data_block.count_free_bytes() >= dir_size as u16 {
                     data_block.write(
                         &dir_data,
@@ -420,6 +370,33 @@ impl Inode {
         }
     }
 
+    pub fn get_file_attr(&self, inode_index : u64) -> fuser::FileAttr {
+        fuser::FileAttr {
+            ino: inode_index as u64,
+            size: self.i_size as u64,
+            // todo
+            blocks: 0,
+            atime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(self.i_atime as u64),
+            mtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(self.i_mtime as u64),
+            ctime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(self.i_ctime as u64),
+            crtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(self.i_ctime as u64),
+            kind: match self.i_mode & 0xf000 {
+                0x8000 => fuser::FileType::RegularFile,
+                0x4000 => fuser::FileType::Directory,
+                _ => fuser::FileType::RegularFile,
+            },
+            perm: self.i_mode & 0x0fff,
+            nlink: self.i_links_count as u32,
+            uid: self.i_uid as u32,
+            gid: self.i_gid as u32,
+            // 不熟这些 attr 先不实现
+            rdev: 0,
+            flags: 0,
+            blksize: BLOCK_SIZE as u32,
+            padding: 0,
+        }
+    }
+
     pub fn inode_update_size(&mut self, size: u32) {
         self.i_size += size + self.i_size;
         self.i_ctime = get_current_time();
@@ -466,14 +443,16 @@ impl DataBlock {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
         while offset + 6 <= BLOCK_SIZE {
-            dbg!(&self.data[..50]);
-            let file_size: u16 =
-                bincode::deserialize(dbg!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
+            // dbg!(&self.data[..50]);
+            let file_size= self.data[offset +4];
+            //dbg!(file_size);
+                //bincode::deserialize(!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {
                 break;
             }
             let dir: DirectoryEntry =
                 bincode::deserialize(&self.data[offset..offset + file_size as usize]).unwrap();
+            //dbg!(&dir);
             dir_vec.push(dir);
             offset += file_size as usize;
         }

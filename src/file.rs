@@ -1,5 +1,3 @@
-use std::iter::StepBy;
-
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub enum FileType {
@@ -32,8 +30,10 @@ impl DirectoryEntry {
         }
     }
     pub fn to_bytes(&mut self) -> (Vec<u8>, u16) {
-        let dir_data = bincode::serialize(&self).unwrap();
+        let mut dir_data = bincode::serialize(&self).unwrap();
         let dir_size = dir_data.len() as u16;
+        self.entry_update(dir_size);
+        dir_data[4] = dir_size as u8;
         self.file_size = dir_size;
         (dir_data, dir_size)
     }
@@ -41,10 +41,15 @@ impl DirectoryEntry {
         match self.file_type {
             FileType::Regular => fuser::FileType::RegularFile,
             FileType::Directory => fuser::FileType::Directory,
-            // fuser 不存在 Unknown 这个 type
+            // fuser 不存在 Unknown 这s个 type
             FileType::Unknow => fuser::FileType::RegularFile,
         }
     }
+
+    pub fn entry_update(&mut self,size : u16){
+        self.file_size = size;
+    }
+
     pub fn get_name(&self) -> String {
         self.name.clone()
     }
