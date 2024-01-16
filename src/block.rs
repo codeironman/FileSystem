@@ -92,6 +92,7 @@ impl BlockGroup {
         let inode_index = self.inode_table[parent_inode].get_index();
         let block_index = self.get_block_for_file();
         self.data_block[block_index].write(data, 0);
+        
     }
 
     pub fn bg_list(&self,parent_inode : usize) {

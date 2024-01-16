@@ -1,5 +1,6 @@
 use bincode::config::BigEndian;
 use fuser::Filesystem;
+use log::{logger, info};
 use crate::file::*;
 use crate::block::{BlockGroup,BootBlock,SuperBlock, self};
 pub struct EXT2FS{
@@ -16,6 +17,7 @@ pub struct EXT2FS{
 
 impl Filesystem for EXT2FS {
     fn init( &mut self, _req: &fuser::Request<'_>, _config: &mut fuser::KernelConfig) -> Result<(), std::ffi::c_int> {
+        println!("init our filesystem");
         Ok(())
     }
     fn write(
@@ -30,7 +32,10 @@ impl Filesystem for EXT2FS {
             _lock_owner: Option<u64>,
             reply: fuser::ReplyWrite,
         ) {
+        info!("begin to witre");
         self.block_groups[0].write_file(ino as usize, data);
+        info!("end to witre");
+        reply.written(data.len() as u32);
     }
 
 
@@ -49,6 +54,7 @@ impl Filesystem for EXT2FS {
         ) {
         let data = self.block_groups[0].read_file(ino as usize);
         println!("{}",std::str::from_utf8(data.as_slice()).unwrap());
+        reply.data(&data);
     }
 
 
@@ -77,7 +83,8 @@ impl Filesystem for EXT2FS {
     }
     fn rmdir(&mut self, _req: &fuser::Request<'_>, _parent: u64, _name: &std::ffi::OsStr, reply: fuser::ReplyEmpty) {
         let dir_name = _name.to_string_lossy().into_owned();
-        self.block_groups[0].bg_rmdir(_parent as usize, dir_name)
+        self.block_groups[0].bg_rmdir(_parent as usize, dir_name);
+        reply.ok();
     }
 
     fn readdir(
@@ -89,6 +96,7 @@ impl Filesystem for EXT2FS {
             reply: fuser::ReplyDirectory,
         ) {
             self.block_groups[0].bg_list(ino as usize);
+            reply.ok();
     }
 
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {

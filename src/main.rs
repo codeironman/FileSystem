@@ -6,43 +6,44 @@ use disk::EXT2FS;
 mod block;
 mod bitmap;
 use fuser::{MountOption,Filesystem};
-
+use log::{info, warn};
+use env_logger;
 
 fn main() {
-    let mountpoint = "/Users/caofengyi/code/os/mount";
+    let mountpoint = "/Users/caofengyi/code/os/point";
     let name= "123".to_string();
     let pw = "abc".to_string();
-    
     let mut filesystem = EXT2FS::new(name,pw);
+    info!("Begin to load our filesystem");
     fuser::mount2(filesystem, mountpoint, &[MountOption::FSName("myfs".to_string())]).unwrap();
 
-    loop {
-        print!("% >");
-        let _ = stdout().flush();
-        let mut s = String::new();
-        stdin().read_line(&mut s).unwrap();
-        let input = s.trim();
-        let mut parts = input.split_whitespace();
-        let command = parts.next().unwrap_or("");
-        let args = parts.collect::<Vec<&str>>();
-        println!("{}",input);
-        // match input {
-        //     "q" => break,
-        //     "ls" => filesystem.ls(0),
-        //     "mkdir" => {
-        //         filesystem.mkdir(req, parent, name, mode, umask, reply)
-        //     }
-        //     "rmdir" => {
-        //         if let Some(dir_name) = args.first() {
-        //             match filesystem.rmdir(dir_name) {
-        //                 Ok(_) => println!("Directory removed"),
-        //                 Err(e) => println!("Error removing directory: {}", e),
-        //             }
-        //         } else {
-        //             println!("Usage: rmdir <directory>");
-        //         }
-        //     },
-        //     &_ => todo!()
-        // }
-    }
+    // loop {
+    //     print!("% >");
+    //     let _ = stdout().flush();
+    //     let mut s = String::new();
+    //     stdin().read_line(&mut s).unwrap();
+    //     let input = s.trim();
+    //     let mut parts = input.split_whitespace();
+    //     let command = parts.next().unwrap_or("");
+    //     let args = parts.collect::<Vec<&str>>();
+    //     println!("{}",input);
+    //     // match input {
+    //     //     "q" => break,
+    //     //     "ls" => filesystem.ls(0),
+    //     //     "mkdir" => {
+    //     //         filesystem.mkdir(req, parent, name, mode, umask, reply)
+    //     //     }
+    //     //     "rmdir" => {
+    //     //         if let Some(dir_name) = args.first() {
+    //     //             match filesystem.rmdir(dir_name) {
+    //     //                 Ok(_) => println!("Directory removed"),
+    //     //                 Err(e) => println!("Error removing directory: {}", e),
+    //     //             }
+    //     //         } else {
+    //     //             println!("Usage: rmdir <directory>");
+    //     //         }
+    //     //     },
+    //     //     &_ => todo!()
+    //     // }
+    // }
 }
