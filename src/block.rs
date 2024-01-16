@@ -1,14 +1,22 @@
-use core::num;
-use std::{time::{SystemTime, UNIX_EPOCH}, vec, io::{Bytes, SeekFrom}, mem, cmp::min, sync::Arc};
+use crate::{bitmap::*, block, file::*};
 use bincode;
+use log::debug;
 use serde::de::value::SeqDeserializer;
-use crate::{file::*, block, bitmap::*};
+use std::{
+    alloc::System,
+    clone,
+    cmp::{max, min},
+    io::{Bytes, SeekFrom},
+    mem,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+    vec,
+};
 
-pub const BLOCK_SIZE : usize = 1024; //每个数据块的大小为1kB
-//一个块的大小控制了，inode和bitmap的位图的大就是一个块的大小
-//那么块的数据也就确定了，1024*8
-pub const BLOCK_COUNT : usize = BLOCK_SIZE * 8;
-
+pub const BLOCK_SIZE: usize = 1024; //每个数据块的大小为1kB
+                                    //一个块的大小控制了，inode和bitmap的位图的大就是一个块的大小
+                                    //那么块的数据也就确定了，1024*8
+pub const BLOCK_COUNT: usize = BLOCK_SIZE * 8;
 
 //part 1
 pub struct BootBlock {}
@@ -43,11 +51,14 @@ pub struct GroupDescriperTable {
 
 pub struct Inode {
     i_mode: u16, //16位置用于表示文件的类型和权限
+    i_uid: u16,  //用户id
     i_size: u32,
     i_atime: u32, //存储的是秒数
     i_ctime: u32,
     i_mtime: u32,
     i_dtime: u32,
+    i_gid: u16, //组id
+    i_links_count: u16,
     i_block: [Option<u32>; 15], //指向的是数据块
     //file_type: FileType,可有可无
     pub direct_pointer: [Option<u32>; 12], //直接索引，前12个块 Some是指向数字的指针，要么就是None
@@ -61,51 +72,97 @@ struct DataBlock {
 }
 
 impl BlockGroup {
+    pub fn new_root() -> Self {
+        let mut bg = BlockGroup::new();
+
+        bg.inode_bitmap.set(1, true);
+        let inode = bg.inode_table.get_mut(0).unwrap();
+        // 777 dir
+        inode.i_mode = 0x41ff;
+        bg.add_entry_to_directory(".".to_string(), 1);
+        bg.add_entry_to_directory("..".to_string(), 1);
+        bg
+    }
+
     pub fn new() -> Self {
         BlockGroup {
             superblock: SuperBlock::new(),
             group_descriper_table: GroupDescriperTable::new(),
             inode_bitmap: Bitmap::new(BLOCK_SIZE),
             block_bitmap: Bitmap::new(BLOCK_SIZE),
-            inode_table: vec![],
-            data_block: vec![],
+            inode_table: vec![Inode::new(); BLOCK_SIZE*8],
+            data_block: vec![DataBlock::new(); BLOCK_SIZE*8],
         }
     }
+
     pub fn full(&self) -> bool {
         self.block_bitmap.free_index() == None
     }
 
-   pub fn read_file(&self,inode_index : usize) -> Vec<u8> {
-    let mut data:Vec<u8> = vec![];
+    pub fn read_file(&self, inode_index: usize) -> Vec<u8> {
+        let mut data: Vec<u8> = vec![];
         for block_index in self.inode_table[inode_index].direct_pointer {
             match block_index {
                 Some(index) => {
                     data.extend_from_slice(self.data_block[index as usize].read());
-                },
-                None => ()
+                }
+                None => (),
             }
-            }
+        }
         data
-   }
-
-    pub fn write_file(&mut self,parent_inode : usize,data :&[u8]) {
-        let inode_index = self.inode_table[parent_inode].get_index();
-        let block_index = self.get_block_for_file();
-        self.data_block[block_index].write(data, 0);
-        
     }
 
-    pub fn bg_list(&self,parent_inode : usize) {
-        let mut all_dirs:Vec<DirectoryEntry> = vec![];
-        for index in self.inode_table[parent_inode as usize].direct_pointer{
+    pub fn write_file_offset(&mut self, inode_idx: usize, offset: usize, data: &[u8]) {
+        let inode = self.inode_table.get_mut(inode_idx - 1).unwrap();
+        inode.inode_update_size(max(inode.i_size, (offset + data.len()) as u32));
+
+        let (mut write_entry_block_idx, mut inner_offset) = convert_offset(offset);
+        let mut write_pos = 0;
+        loop {
+            let block = self.get_block_by_inode_rel_block(inode_idx, write_entry_block_idx);
+            let write_count = min(BLOCK_SIZE - inner_offset, data.len() - write_pos);
+
+            block.write(&data[write_pos..write_pos + write_count], inner_offset);
+            write_pos += write_count;
+            write_entry_block_idx += 1;
+            inner_offset = 0;
+            if write_pos >= data.len() {
+                break;
+            }
+        }
+    }
+
+    fn get_block_by_inode_rel_block(&mut self, inode: usize, block_idx: usize) -> &mut DataBlock {
+        // todo: 多级混合索引
+        match block_idx {
+            0..=11 => {
+                match self.inode_table[inode - 1].direct_pointer[block_idx] {
+                    Some(index) => self.data_block.get_mut(index as usize).unwrap(),
+                    None => {
+                        // 自动扩容
+                        let datablock = self.get_block_for_file();
+                        self.inode_table[inode - 1].direct_pointer[block_idx] =
+                            Some(datablock as u32);
+                        &mut self.data_block[datablock]
+                    }
+                }
+            }
+            _ => panic!("not implemented"),
+        }
+    }
+
+    pub fn bg_list(&self, parent_inode: usize) {
+        let mut all_dirs: Vec<DirectoryEntry> = vec![];
+        for index in self.inode_table[parent_inode as usize].direct_pointer {
             if let Some(i_block) = index {
                 all_dirs.append(&mut self.data_block[i_block as usize].get_all_dirs_name());
             }
         }
         for it in &all_dirs {
-            print!("{}",it.name);
+            print!("{}", it.name);
         }
     }
+
     pub fn bg_rmdir(&mut self, parent_inode: usize, name: String) {
         for block_index in self.inode_table[parent_inode].direct_pointer {
             if let Some(index) = block_index {
@@ -120,68 +177,59 @@ impl BlockGroup {
         self.add_entry_to_directory("..".to_string(), child_inode);
     }
 
+    pub fn bg_getattr(&self, inode_index: usize) -> fuser::FileAttr {
+        let inode = &self.inode_table[inode_index];
+        fuser::FileAttr {
+            ino: inode_index as u64,
+            size: inode.i_size as u64,
+            // todo
+            blocks: 0,
+            atime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_atime as u64),
+            mtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_mtime as u64),
+            ctime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
+            crtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
+            kind: match inode.i_mode & 0xf000 {
+                0x8000 => fuser::FileType::RegularFile,
+                0x4000 => fuser::FileType::Directory,
+                _ => fuser::FileType::RegularFile,
+            },
+            perm: inode.i_mode & 0x0fff,
+            nlink: inode.i_links_count as u32,
+            uid: inode.i_uid as u32,
+            gid: inode.i_gid as u32,
+            // 不熟这些 attr 先不实现
+            rdev: 0,
+            flags: 0,
+            blksize: BLOCK_SIZE as u32,
+            padding: 0,
+        }
+    }
+
     pub fn add_entry_to_directory(&mut self, name: String, parent_inode: usize) -> usize {
         let inode_index = self.get_inode(); //分配一个inode
         let mut dir = DirectoryEntry::new(name, FileType::Directory, inode_index as u32, 0);
         let (dir_data, dir_size) = dir.to_bytes();
-        let (block_index, offset, i_block_index) = self.get_block_for_dir(parent_inode, dir_size); //找到写入的块
-        self.data_block[block_index].write(&dir_data, offset);
-        self.inode_table[parent_inode].inode_update(
-            dir_size as i32,
-            i_block_index,
-            block_index as u32,
-        );
-        self.inode_bitmap.set(inode_index, true);
-        self.block_bitmap.set(block_index, true);
+
+        let inode = self.inode_table.get(parent_inode - 1).unwrap();
+        self.write_file_offset(parent_inode, inode.i_size as usize, &dir_data);
+
         inode_index
     }
-    //找到第一个还有容量的块能够写入文件夹的块，用于写入文件夹
-    pub fn get_block_for_dir(&self, inode_index: usize, dir_byte: u16) -> (usize, usize, usize) {
-        //先实现直接指针的，todo多级指针
-        let mut inode_index = 0;
-        for i in self.inode_table[inode_index].direct_pointer {
-            if let Some(val) = i {
-                let free_bytes = self.data_block[val as usize].count_free_bytes();
-                if free_bytes > dir_byte {
-                    return (val as usize, BLOCK_SIZE - free_bytes as usize, inode_index);
-                }
-                inode_index += 1;
-            }
-        }
-        (0, 0, 0)
-    }
 
-    pub fn get_inode_index(&mut self, inode_index: usize) -> i32 {
-        self.inode_table[inode_index].get_index()
-    }
     fn get_inode(&mut self) -> usize {
         match self.inode_bitmap.free_index() {
             Some(index) => return index,
             None => {
-                self.inode_bitmap.set(self.inode_table.len() - 1, true);
-                self.inode_table.push(Inode::new());
-                self.inode_table.len()
+                panic!("no free inode")
             }
         }
     }
     //找到空的块
     pub fn get_block_for_file(&mut self) -> usize {
-        if let Some(index) = self.block_bitmap.free_index() {
-            return index;
+        match self.block_bitmap.free_index() {
+            Some(index) => return index + 1,
+            None => panic!("no free block"),
         }
-        self.block_bitmap.set(self.data_block.len(), true);
-        self.data_block.push(DataBlock::new());
-        return self.data_block.len();
-    }
-
-    fn bg_update(&mut self, block_index: usize, inode_index: usize) {
-        self.block_bitmap.set(block_index, true);
-        self.inode_bitmap.set(inode_index, true);
-    }
-    //将文件写入数据块中
-    pub fn write_to_block(&mut self, data: &[u8], block_index: usize, offset: usize) -> usize {
-        self.data_block[block_index as usize].write(&data, offset);
-        return block_index as usize;
     }
 }
 
@@ -235,6 +283,27 @@ pub enum Filetype {
     // SymbolicLink = 0xA000,
 }
 
+impl Clone for Inode{
+    fn clone(&self) -> Self {
+        Inode {
+            i_mode: self.i_mode,
+            i_size: self.i_size,
+            i_atime: self.i_atime,
+            i_ctime: self.i_ctime,
+            i_mtime: self.i_mtime,
+            i_dtime: self.i_dtime,
+            i_block: self.i_block,
+            direct_pointer: self.direct_pointer.clone(),
+            singly_indirect_block: self.singly_indirect_block.clone(),
+            doubly_indirect_block: self.doubly_indirect_block.clone(),
+            triply_indirect_block: self.triply_indirect_block.clone(),
+            i_uid: self.i_uid,
+            i_gid: self.i_gid,
+            i_links_count: self.i_links_count,
+        }
+    }
+}
+
 impl Inode {
     fn new() -> Self {
         Inode {
@@ -249,22 +318,23 @@ impl Inode {
             singly_indirect_block: None,
             doubly_indirect_block: None,
             triply_indirect_block: None,
+            i_uid: 0,
+            i_gid: 0,
+            i_links_count: 1,
         }
-    }
-    //找到第一个空的直接指向的指针
-    pub fn get_index(&self) -> i32 {
-        for i in self.direct_pointer {
-            if i == None {
-                return i.unwrap() as i32;
-            }
-        }
-        -1
     }
 
-    pub fn inode_update(&mut self, size: i32, index: usize, block_index: u32) {
-        self.i_size += (size + self.i_size as i32) as u32;
-        self.direct_pointer[index] = Option::Some(block_index);
+    pub fn inode_update_size(&mut self, size: u32) {
+        self.i_size += size + self.i_size;
         self.i_ctime = get_current_time();
+    }
+}
+
+impl Clone for DataBlock{
+    fn clone(&self) -> Self {
+        DataBlock {
+            data: self.data.clone(),
+        }
     }
 }
 
@@ -280,13 +350,13 @@ impl DataBlock {
     pub fn write(&mut self, data: &[u8], offset: usize) {
         for (i, &byte) in data.iter().enumerate().take(BLOCK_SIZE) {
             self.data[i + offset] = byte;
-        } 
+        }
     }
 
-    pub fn read(&self) -> &[u8]{
+    pub fn read(&self) -> &[u8] {
         &self.data
     }
-    pub fn count_free_bytes(&self) -> u16{
+    pub fn count_free_bytes(&self) -> u16 {
         let mut used_byte = 0;
         for &byte in self.data.iter() {
             if byte != 0x00 {
@@ -342,4 +412,8 @@ fn get_current_time() -> u32 {
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     duration.as_secs() as u32
+}
+
+pub fn convert_offset(offset: usize) -> (usize, usize) {
+    (offset / BLOCK_SIZE, offset % BLOCK_SIZE)
 }

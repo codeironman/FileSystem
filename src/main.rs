@@ -1,21 +1,26 @@
-mod file;
 mod disk;
-use std::io::{stdout, Write, stdin};
+mod file;
+use std::io::{stdin, stdout, Write};
 mod test;
 use disk::EXT2FS;
-mod block;
 mod bitmap;
-use fuser::{MountOption,Filesystem};
-use log::{info, warn};
+mod block;
 use env_logger;
+use fuser::{Filesystem, MountOption};
+use log::{info, warn};
 
 fn main() {
-    let mountpoint = "/Users/caofengyi/code/os/point";
-    let name= "123".to_string();
+    let mountpoint = "/test2";
+    let name = "123".to_string();
     let pw = "abc".to_string();
-    let mut filesystem = EXT2FS::new(name,pw);
+    let filesystem = EXT2FS::new(name, pw);
     info!("Begin to load our filesystem");
-    fuser::mount2(filesystem, mountpoint, &[MountOption::FSName("myfs".to_string())]).unwrap();
+    fuser::mount2(
+        filesystem,
+        mountpoint,
+        &[MountOption::FSName("myfs".to_string())],
+    )
+    .unwrap();
 
     // loop {
     //     print!("% >");
