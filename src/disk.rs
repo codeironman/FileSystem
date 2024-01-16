@@ -1,4 +1,5 @@
 use std::f32::consts::E;
+use std::time::Duration;
 
 use crate::block::{self, BlockGroup, BootBlock, SuperBlock};
 use crate::file::*;
@@ -8,7 +9,7 @@ use log::debug;
 use log::{info, logger};
 pub struct EXT2FS {
     //boot_block : Boot_Block,
-    block_groups: Vec<BlockGroup>,
+    block_groups: BlockGroup,
     path: String,
     current_inode_index: usize,
     user_name: String,
@@ -22,8 +23,7 @@ impl Filesystem for EXT2FS {
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), std::ffi::c_int> {
         println!("init called");
-        let bg = BlockGroup::new_root();
-        self.block_groups.push(bg);
+        self.block_groups = BlockGroup::new_root();
         Ok(())
     }
     fn write(
@@ -39,7 +39,7 @@ impl Filesystem for EXT2FS {
         reply: fuser::ReplyWrite,
     ) {
         println!("write called for ino={}", ino);
-        self.block_groups[0].write_file_offset(ino as usize, offset as usize, data);
+        self.block_groups.write_file_offset(ino as usize, offset as usize, data);
         reply.written(data.len() as u32);
     }
 
@@ -55,7 +55,7 @@ impl Filesystem for EXT2FS {
         reply: fuser::ReplyData,
     ) {
         println!("read called for ino={}", ino);
-        let data = self.block_groups[0].read_file(ino as usize);
+        let data = self.block_groups.read_file(ino as usize);
         println!("{}", std::str::from_utf8(data.as_slice()).unwrap());
         reply.data(&data);
     }
@@ -75,16 +75,8 @@ impl Filesystem for EXT2FS {
             name.to_string_lossy()
         );
         let name = name.to_string_lossy().into_owned();
-        let block_group_index = match self.get_block_group() {
-            Some(index) => index,
-            None => {
-                let block_group = BlockGroup::new();
-                self.block_groups.push(block_group);
-                self.block_groups.len() - 1
-            }
-        };
         //需要新建一个块
-        self.block_groups[block_group_index].bg_mkdir(name, _parent as usize);
+        self.block_groups.bg_mkdir(name, _parent as usize);
     }
     fn rmdir(
         &mut self,
@@ -99,7 +91,7 @@ impl Filesystem for EXT2FS {
             _name.to_string_lossy()
         );
         let dir_name = _name.to_string_lossy().into_owned();
-        self.block_groups[0].bg_rmdir(_parent as usize, dir_name);
+        self.block_groups.bg_rmdir(_parent as usize, dir_name);
         reply.ok();
     }
 
@@ -112,30 +104,39 @@ impl Filesystem for EXT2FS {
         reply: fuser::ReplyDirectory,
     ) {
         println!("readdir called for ino={}", ino);
-        self.block_groups[0].bg_list(ino as usize);
+        self.block_groups.bg_list(ino as usize);
         reply.ok();
     }
 
     fn getattr(&mut self, _req: &fuser::Request<'_>, _ino: u64, reply: fuser::ReplyAttr) {
         println!("getattr called for ino={}", _ino);
-        let inode = self.block_groups[0].bg_getattr(_ino as usize);
+        let inode = self.block_groups.bg_getattr(_ino as usize);
     }
 
     fn lookup(
         &mut self,
         _req: &fuser::Request<'_>,
-        _parent: u64,
-        _name: &std::ffi::OsStr,
+        parent: u64,
+        name: &std::ffi::OsStr,
         reply: fuser::ReplyEntry,
     ) {
         println!(
             "lookup called for parent={}, name={}",
-            _parent,
-            _name.to_string_lossy()
+            parent,
+            name.to_string_lossy()
         );
+        let dir_name = name.to_string_lossy().into_owned();
+        let attr = self.block_groups.bg_lookup(dir_name, parent as usize );
+        if let Some(file) = attr {
+            reply.entry(&Duration::from_secs(1), &file, 0);
+        }
+
     }
 
+
+
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
+    
     }
 }
 
@@ -146,16 +147,16 @@ impl EXT2FS {
         //将root文件夹放入第一个大块中
         EXT2FS {
             //boot_block : boot,
-            block_groups: vec![root_block],
+            block_groups: root_block,
             path: "root".to_string(),
             user_name: name,
             password: pwd,
             current_inode_index: 0,
         }
     }
-    pub fn get_block_group(&self) -> Option<usize> {
-        self.block_groups.iter().position(|x| !x.full())
-    }
+    // pub fn get_block_group(&self) -> Option<usize> {
+    //     self.block_groups.iter().position(|x| !x.full())
+    // }
 
     pub fn cd() {}
     pub fn create() {}

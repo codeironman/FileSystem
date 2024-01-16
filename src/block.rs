@@ -177,6 +177,46 @@ impl BlockGroup {
         self.add_entry_to_directory("..".to_string(), child_inode);
     }
 
+
+    pub fn bg_lookup(&mut self, name : String, parent_inode : usize) -> Option<fuser::FileAttr>{
+        for block_index in self.inode_table[parent_inode].direct_pointer {
+            if let Some(index) = block_index {
+            let data_block = &self.data_block[index as usize];
+            let dirs = data_block.get_all_dirs_name();
+            for dir in dirs {
+                if dir.name == name {
+                    let inode = &self.inode_table[index as usize];
+                    return 
+                    Some(fuser::FileAttr {
+                        ino: index as u64,
+                        size: inode.i_size as u64,
+                        // todo
+                        blocks: 0,
+                        atime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_atime as u64),
+                        mtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_mtime as u64),
+                        ctime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
+                        crtime: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(inode.i_ctime as u64),
+                        kind: match inode.i_mode & 0xf000 {
+                            0x8000 => fuser::FileType::RegularFile,
+                            0x4000 => fuser::FileType::Directory,
+                            _ => fuser::FileType::RegularFile,
+                        },
+                        perm: inode.i_mode & 0x0fff,
+                        nlink: inode.i_links_count as u32,
+                        uid: inode.i_uid as u32,
+                        gid: inode.i_gid as u32,
+                        // 不熟这些 attr 先不实现
+                        rdev: 0,
+                        flags: 0,
+                        blksize: BLOCK_SIZE as u32,
+                        padding: 0,
+                    });
+                }
+            }
+        }
+    }
+        None
+    }
     pub fn bg_getattr(&self, inode_index: usize) -> fuser::FileAttr {
         let inode = &self.inode_table[inode_index];
         fuser::FileAttr {
@@ -407,7 +447,7 @@ impl DataBlock {
 
 //usr access tight
 
-fn get_current_time() -> u32 {
+pub fn get_current_time() -> u32 {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
