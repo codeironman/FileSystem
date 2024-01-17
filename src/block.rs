@@ -12,7 +12,7 @@ use std::{
     ops::Deref,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
-    vec,
+    vec, thread::panicking,
 };
 
 pub const BLOCK_SIZE: usize = 1024; //每个数据块的大小为1kB
@@ -82,8 +82,8 @@ impl BlockGroup {
         let inode = bg.inode_table.get_mut(0).unwrap();
         // 777 dir
         inode.i_mode = 0x41ff;
-        bg.add_entry_to_directory(".".to_string(), 1,FileType::Regular);
-        bg.add_entry_to_directory("..".to_string(), 1,FileType::Regular);
+        bg.add_entry_to_directory(".".to_string(), 1,FileType::Directory);
+        bg.add_entry_to_directory("..".to_string(), 1,FileType::Directory);
         bg
     }
 
@@ -229,7 +229,10 @@ impl BlockGroup {
     }
 
     pub fn add_entry_to_directory(&mut self, name: String, parent_inode: usize, filetype : FileType) -> usize {
-        let inode_index = self.get_inode(); //分配一个inode
+        let mut inode_index = self.get_inode(); //分配一个inode
+        if name == ".." {
+            inode_index = parent_inode;
+        }
         let mut dir = DirectoryEntry::new(name, filetype, inode_index as u32, 0);
         let (dir_data, dir_size) = dir.to_bytes();//修改了目录的大小
         for &block_index in self
