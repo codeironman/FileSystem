@@ -168,6 +168,10 @@ impl Filesystem for EXT2FS {
         }
     }
 
+    fn open(&mut self,
+         _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
+        
+    }
     fn create(
         &mut self,
         _req: &fuser::Request<'_>,
