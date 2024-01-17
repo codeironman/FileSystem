@@ -6,11 +6,13 @@ use std::{
     alloc::System,
     clone,
     cmp::{max, min},
+    f32::consts::E,
     io::{Bytes, SeekFrom},
     mem,
+    ops::Deref,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
-    vec, f32::consts::E,
+    vec,
 };
 
 pub const BLOCK_SIZE: usize = 1024; //每个数据块的大小为1kB
@@ -188,11 +190,12 @@ impl BlockGroup {
 
     pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode);
+        self.inode_table[child_inode - 1].init_as_dir();
         let t = self.add_entry_to_directory(".".to_string(), child_inode);
         dbg!(t);
         let m = self.add_entry_to_directory("..".to_string(), child_inode);
         dbg!(m);
-        Some(self.inode_table[child_inode - 1].get_file_attr(child_inode as u64))
+        Some(self.inode_table[parent_inode - 1].get_file_attr(child_inode as u64))
     }
 
     pub fn bg_lookup(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
@@ -223,6 +226,7 @@ impl BlockGroup {
 
     pub fn bg_create(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode);
+        self.inode_table[child_inode - 1].init_as_file();
         Some(self.bg_getattr(child_inode))
     }
 
@@ -264,7 +268,10 @@ impl BlockGroup {
 
     fn get_inode(&mut self) -> usize {
         match self.inode_bitmap.free_index() {
-            Some(index) => return index,
+            Some(index) => {
+                self.inode_bitmap.set(index, true);
+                return index+1
+            }
             None => {
                 panic!("no free inode")
             }
@@ -273,7 +280,10 @@ impl BlockGroup {
     //找到空的块
     pub fn get_block_for_file(&mut self) -> usize {
         match self.block_bitmap.free_index() {
-            Some(index) => return index + 1,
+            Some(index) => {
+                self.block_bitmap.set(index, true);
+                return index + 1
+            }
             None => panic!("no free block"),
         }
     }
@@ -370,7 +380,7 @@ impl Inode {
         }
     }
 
-    pub fn get_file_attr(&self, inode_index : u64) -> fuser::FileAttr {
+    pub fn get_file_attr(&self, inode_index: u64) -> fuser::FileAttr {
         fuser::FileAttr {
             ino: inode_index as u64,
             size: self.i_size as u64,
@@ -400,6 +410,24 @@ impl Inode {
     pub fn inode_update_size(&mut self, size: u32) {
         self.i_size += size + self.i_size;
         self.i_ctime = get_current_time();
+    }
+
+    pub fn init_as_file(&mut self) {
+        self.i_mode = 0x81ff;
+        self.i_size = 0;
+        self.i_atime = get_current_time();
+        self.i_ctime = get_current_time();
+        self.i_mtime = get_current_time();
+        self.direct_pointer = [None; 12];
+    }
+
+    pub fn init_as_dir(&mut self) {
+        self.i_mode = 0x41ff;
+        self.i_size = 0;
+        self.i_atime = get_current_time();
+        self.i_ctime = get_current_time();
+        self.i_mtime = get_current_time();
+        self.direct_pointer = [None; 12];
     }
 }
 
@@ -432,21 +460,22 @@ impl DataBlock {
     pub fn count_free_bytes(&self) -> u16 {
         let mut offset: usize = 0;
         while offset + 8 < BLOCK_SIZE {
-            let file_size:u16 = self.data[offset +4] as u16+((self.data[offset +5]as u16)<<8);
+            let file_size: u16 =
+                self.data[offset + 4] as u16 + ((self.data[offset + 5] as u16) << 8);
             if file_size == 0 {
                 break;
             }
             offset += file_size as usize;
         }
-        return (BLOCK_SIZE - offset)as u16;
+        return (BLOCK_SIZE - offset) as u16;
     }
     pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry> {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
         while offset + 8 < BLOCK_SIZE {
-            let file_size= self.data[offset +4] as u16+((self.data[offset +5]as u16)<<8);
+            let file_size = self.data[offset + 4] as u16 + ((self.data[offset + 5] as u16) << 8);
             //dbg!(file_size);
-                //bincode::deserialize(!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
+            //bincode::deserialize(!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {
                 break;
             }
