@@ -430,19 +430,20 @@ impl DataBlock {
         &self.data
     }
     pub fn count_free_bytes(&self) -> u16 {
-        let mut used_byte = 0;
-        for &byte in self.data.iter() {
-            if byte != 0x00 {
-            } else {
+        let mut offset: usize = 0;
+        while offset + 8 < BLOCK_SIZE {
+            let file_size:u16 = dbg!(self.data[offset +4] as u16);
+            if file_size == 0 {
                 break;
             }
+            offset += file_size as usize;
         }
-        return (BLOCK_SIZE - used_byte) as u16;
+        return dbg!((BLOCK_SIZE - offset)as u16);
     }
     pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry> {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
-        while offset + 6 <= BLOCK_SIZE {
+        while offset + 8 < BLOCK_SIZE {
             // dbg!(&self.data[..50]);
             let file_size= self.data[offset +4];
             //dbg!(file_size);

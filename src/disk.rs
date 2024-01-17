@@ -107,22 +107,29 @@ impl Filesystem for EXT2FS {
         mut reply: fuser::ReplyDirectory,
     ) {
         println!("readdir called for ino={}", ino);
-        self.block_groups.bg_list(ino as usize).iter().skip(_offset as usize).find(|f|{
-            reply.add(f.inode as u64, _offset, f.get_type(), &f.get_name())
-        });
+        self.block_groups
+            .bg_list(ino as usize)
+            .iter()
+            .skip(_offset as usize)
+            .enumerate()
+            .find(|(i, f)| {
+                reply.add(
+                    f.inode as u64,
+                    *i as i64 + _offset + 1,
+                    f.get_type(),
+                    &f.get_name(),
+                )
+            });
 
         reply.ok();
     }
-    //tested 
+
+    //tested
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         //println!("getattr called for ino={}", ino);
         let attr = self.block_groups.bg_getattr(ino as usize);
         //dbg!(attr);
         reply.attr(&Duration::new(0, 0), &attr);
-    }
-
-    fn opendir(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
-        dbg!("opendir");
     }
 
     fn lookup(
@@ -136,11 +143,13 @@ impl Filesystem for EXT2FS {
             "lookup called for parent={}, name={}",
             parent,
             name.to_string_lossy()
-        ); 
+        );
         dbg!(name);
         let dir_name = name.to_string_lossy().into_owned();
         dbg!(&dir_name);
-        let attr = self.block_groups.bg_lookup(dir_name.to_string(), parent as usize);
+        let attr = self
+            .block_groups
+            .bg_lookup(dir_name.to_string(), parent as usize);
         dbg!(attr);
         if let Some(file) = attr {
             dbg!(file);
@@ -148,31 +157,29 @@ impl Filesystem for EXT2FS {
         }
     }
 
-
     fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
     }
 
     fn create(
-            &mut self,
-            _req: &fuser::Request<'_>,
-            _parent: u64,
-            _name: &std::ffi::OsStr,
-            _mode: u32,
-            _umask: u32,
-            _flags: i32,
-            reply: fuser::ReplyCreate,
-        ) {
-            println!(
-                "create called for parent={}, name={}",
-                _parent,
-                _name.to_string_lossy()
-            );
-            let file_name = _name.to_string_lossy().into_owned();
-            let attr = self.block_groups.bg_create(file_name, _parent as usize);
-            if let Some(file) = attr {
-                reply.created(&Duration::from_secs(0), &file, 0, 0, 0);
-            }
-        
+        &mut self,
+        _req: &fuser::Request<'_>,
+        _parent: u64,
+        _name: &std::ffi::OsStr,
+        _mode: u32,
+        _umask: u32,
+        _flags: i32,
+        reply: fuser::ReplyCreate,
+    ) {
+        println!(
+            "create called for parent={}, name={}",
+            _parent,
+            _name.to_string_lossy()
+        );
+        let file_name = _name.to_string_lossy().into_owned();
+        let attr = self.block_groups.bg_create(file_name, _parent as usize);
+        if let Some(file) = attr {
+            reply.created(&Duration::from_secs(0), &file, 0, 0, 0);
+        }
     }
 }
 
