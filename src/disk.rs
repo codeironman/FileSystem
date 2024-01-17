@@ -22,8 +22,10 @@ impl Filesystem for EXT2FS {
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), std::ffi::c_int> {
         println!("init called");
+        _config.add_capabilities(fuser::consts::FUSE_ATOMIC_O_TRUNC);
         Ok(())
     }
+
     fn write(
         &mut self,
         _req: &fuser::Request<'_>,

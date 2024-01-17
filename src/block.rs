@@ -436,7 +436,6 @@ impl Inode {
             rdev: 0,
             flags: 0,
             blksize: BLOCK_SIZE as u32,
-            padding: 0,
         }
     }
 
