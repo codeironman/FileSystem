@@ -154,6 +154,8 @@ impl Filesystem for EXT2FS {
         if let Some(file) = attr {
             dbg!(file);
             reply.entry(&Duration::from_secs(1), &file, 0);
+        }else{
+            reply.error(libc::ENOENT)
         }
     }
 
