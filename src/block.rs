@@ -67,7 +67,7 @@ pub struct Inode {
     pub doubly_indirect_block: Option<u32>, //二级索引，第14个块
     pub triply_indirect_block: Option<u32>, //三级索引，第15个块
 }
-
+#[derive(Debug)]
 struct DataBlock {
     pub data: [u8; BLOCK_SIZE as usize], //每个文件块的大小为1kB
 }
@@ -188,10 +188,8 @@ impl BlockGroup {
 
     pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode);
-        let t = self.add_entry_to_directory(".".to_string(), child_inode);
-        dbg!(t);
-        let m = self.add_entry_to_directory("..".to_string(), child_inode);
-        dbg!(m);
+        self.add_entry_to_directory(".".to_string(), child_inode);
+        self.add_entry_to_directory("..".to_string(), child_inode);
         Some(self.inode_table[child_inode - 1].get_file_attr(child_inode as u64))
     }
 
@@ -202,9 +200,11 @@ impl BlockGroup {
             .unwrap()
             .direct_pointer
         {
+            dbg!(&name);
             if let Some(index) = block_index {
                 let data_block = &self.data_block[index as usize];
                 let dirs = data_block.get_all_dirs_name();
+                dbg!(&dirs);
                 for dir in dirs {
                     if dbg!(dir.name) == name {
                         let inode = &self.inode_table[index as usize - 1];
@@ -229,7 +229,7 @@ impl BlockGroup {
     pub fn add_entry_to_directory(&mut self, name: String, parent_inode: usize) -> usize {
         let inode_index = self.get_inode(); //分配一个inode
         let mut dir = DirectoryEntry::new(name, FileType::Directory, inode_index as u32, 0);
-        let (dir_data, dir_size) = dir.to_bytes();
+        let (dir_data, dir_size) = dir.to_bytes();//修改了目录的大小
         for &block_index in self
             .inode_table
             .get(parent_inode - 1)
@@ -442,21 +442,21 @@ impl DataBlock {
     pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry> {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
+        //dbg!(&self.data[..50]);
         while offset + 6 <= BLOCK_SIZE {
-            // dbg!(&self.data[..50]);
             let file_size= self.data[offset +4];
-            //dbg!(file_size);
+            dbg!(file_size);
                 //bincode::deserialize(!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {
                 break;
             }
             let dir: DirectoryEntry =
                 bincode::deserialize(&self.data[offset..offset + file_size as usize]).unwrap();
-            //dbg!(&dir);
+            dbg!(&dir);
             dir_vec.push(dir);
             offset += file_size as usize;
         }
-        dbg!(dir_vec)
+        dir_vec
     }
 
     pub fn rmdir_from_data_block(&mut self, dir_name: &String) {

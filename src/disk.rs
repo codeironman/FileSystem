@@ -137,13 +137,10 @@ impl Filesystem for EXT2FS {
             parent,
             name.to_string_lossy()
         ); 
-        dbg!(name);
         let dir_name = name.to_string_lossy().into_owned();
-        dbg!(&dir_name);
         let attr = self.block_groups.bg_lookup(dir_name.to_string(), parent as usize);
         dbg!(attr);
         if let Some(file) = attr {
-            dbg!(file);
             reply.entry(&Duration::from_secs(1), &file, 0);
         }
     }
