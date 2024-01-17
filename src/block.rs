@@ -200,13 +200,11 @@ impl BlockGroup {
             .unwrap()
             .direct_pointer
         {
-            dbg!(&name);
             if let Some(index) = block_index {
                 let data_block = &self.data_block[index as usize];
                 let dirs = data_block.get_all_dirs_name();
-                dbg!(&dirs);
                 for dir in dirs {
-                    if dbg!(dir.name) == name {
+                    if dir.name == name {
                         let inode = &self.inode_table[index as usize - 1];
                         return Some(inode.get_file_attr(index as u64));
                     }
@@ -430,29 +428,28 @@ impl DataBlock {
         &self.data
     }
     pub fn count_free_bytes(&self) -> u16 {
-        let mut used_byte = 0;
-        for &byte in self.data.iter() {
-            if byte != 0x00 {
-            } else {
+        let mut offset: usize = 0;
+        while offset + 8 < BLOCK_SIZE {
+            let file_size:u16 = self.data[offset +4] as u16;
+            if file_size == 0 {
                 break;
             }
+            offset += file_size as usize;
         }
-        return (BLOCK_SIZE - used_byte) as u16;
+        return dbg!((BLOCK_SIZE - offset)as u16);
     }
     pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry> {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
-        //dbg!(&self.data[..50]);
-        while offset + 6 <= BLOCK_SIZE {
+        while offset + 8 <= BLOCK_SIZE {
+            // dbg!(&self.data[..50]);
             let file_size= self.data[offset +4];
-            dbg!(file_size);
                 //bincode::deserialize(!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {
                 break;
             }
             let dir: DirectoryEntry =
                 bincode::deserialize(&self.data[offset..offset + file_size as usize]).unwrap();
-            dbg!(&dir);
             dir_vec.push(dir);
             offset += file_size as usize;
         }
