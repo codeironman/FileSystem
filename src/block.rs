@@ -175,7 +175,7 @@ impl BlockGroup {
                 all_dirs.append(&mut self.data_block[i_block as usize].get_all_dirs_name());
             }
         }
-        dbg!(all_dirs)
+        all_dirs
     }
 
     pub fn bg_rmdir(&mut self, parent_inode: usize, name: String) {
@@ -188,6 +188,7 @@ impl BlockGroup {
 
     pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode);
+        dbg!(child_inode);
         self.add_entry_to_directory(".".to_string(), child_inode);
         self.add_entry_to_directory("..".to_string(), child_inode);
         Some(self.inode_table[child_inode - 1].get_file_attr(child_inode as u64))
@@ -262,7 +263,7 @@ impl BlockGroup {
 
     fn get_inode(&mut self) -> usize {
         match self.inode_bitmap.free_index() {
-            Some(index) => return index,
+            Some(index) => return index + 1 ,
             None => {
                 panic!("no free inode")
             }
@@ -430,20 +431,20 @@ impl DataBlock {
     pub fn count_free_bytes(&self) -> u16 {
         let mut offset: usize = 0;
         while offset + 8 < BLOCK_SIZE {
-            let file_size:u16 = self.data[offset +4] as u16;
+            let file_size:u16 = self.data[offset +4] as u16+((self.data[offset +5]as u16)<<8);
             if file_size == 0 {
                 break;
             }
             offset += file_size as usize;
         }
-        return dbg!((BLOCK_SIZE - offset)as u16);
+        return (BLOCK_SIZE - offset)as u16;
     }
     pub fn get_all_dirs_name(&self) -> Vec<DirectoryEntry> {
         let mut offset = 0;
         let mut dir_vec: Vec<DirectoryEntry> = vec![];
-        while offset + 8 <= BLOCK_SIZE {
-            // dbg!(&self.data[..50]);
-            let file_size= self.data[offset +4];
+        while offset + 8 < BLOCK_SIZE {
+            let file_size= self.data[offset +4] as u16+((self.data[offset +5]as u16)<<8);
+            //dbg!(file_size);
                 //bincode::deserialize(!(&self.data[4 + offset..6 + offset])).unwrap(); //从第四个字节开始解析2个字节为文件的大小
             if file_size == 0 {
                 break;

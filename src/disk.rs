@@ -5,7 +5,6 @@ use fuser::Filesystem;
 use log::debug;
 use log::{info, logger};
 use std::f32::consts::E;
-use std::libc;
 use std::time::{self, Duration};
 pub struct EXT2FS {
     //boot_block : Boot_Block,
@@ -151,9 +150,8 @@ impl Filesystem for EXT2FS {
             .bg_lookup(dir_name.to_string(), parent as usize);
         if let Some(file) = attr {
             reply.entry(&Duration::from_secs(1), &file, 0);
-        }
-        else {
-            reply.error(libc::ENOENT);   
+        }else{
+            reply.error(libc::ENOENT)
         }
     }
 
