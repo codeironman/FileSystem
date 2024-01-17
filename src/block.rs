@@ -82,8 +82,8 @@ impl BlockGroup {
         let inode = bg.inode_table.get_mut(0).unwrap();
         // 777 dir
         inode.i_mode = 0x41ff;
-        bg.add_entry_to_directory(".".to_string(), 1,FileType::Directory);
-        bg.add_entry_to_directory("..".to_string(), 1,FileType::Directory);
+        // bg.add_entry_to_directory(".".to_string(), 1,FileType::Directory);
+        // bg.add_entry_to_directory("..".to_string(), 1,FileType::Directory);
         bg
     }
 
@@ -191,8 +191,8 @@ impl BlockGroup {
     pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
         let child_inode = self.add_entry_to_directory(name, parent_inode,FileType::Directory);
         self.inode_table[child_inode - 1].init_as_dir();
-        self.add_entry_to_directory(".".to_string(), child_inode,FileType::Directory);
-        self.add_entry_to_directory("..".to_string(), child_inode,FileType::Directory);
+        // self.add_entry_to_directory(".".to_string(), child_inode,FileType::Directory);
+        // self.add_entry_to_directory("..".to_string(), child_inode,FileType::Directory);
         Some(self.inode_table[parent_inode - 1].get_file_attr(child_inode as u64))
     }
 
