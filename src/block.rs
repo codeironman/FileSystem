@@ -82,8 +82,8 @@ impl BlockGroup {
         let inode = bg.inode_table.get_mut(0).unwrap();
         // 777 dir
         inode.i_mode = 0x41ff;
-        bg.add_entry_to_directory(".".to_string(), 1);
-        bg.add_entry_to_directory("..".to_string(), 1);
+        bg.add_entry_to_directory(".".to_string(), 1,FileType::Regular);
+        bg.add_entry_to_directory("..".to_string(), 1,FileType::Regular);
         bg
     }
 
