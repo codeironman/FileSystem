@@ -124,11 +124,10 @@ impl Filesystem for EXT2FS {
         reply.ok();
     }
 
-    //tested
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
-        //println!("getattr called for ino={}", ino);
+        println!("getattr called for ino={}", ino);
         let attr = self.block_groups.bg_getattr(ino as usize);
-        //dbg!(attr);
+        dbg!(attr);
         reply.attr(&Duration::new(0, 0), &attr);
     }
 

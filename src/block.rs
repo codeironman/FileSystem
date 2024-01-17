@@ -11,8 +11,9 @@ use std::{
     mem,
     ops::Deref,
     sync::Arc,
+    thread::panicking,
     time::{SystemTime, UNIX_EPOCH},
-    vec, thread::panicking,
+    vec,
 };
 
 pub const BLOCK_SIZE: usize = 1024; //每个数据块的大小为1kB
@@ -82,8 +83,8 @@ impl BlockGroup {
         let inode = bg.inode_table.get_mut(0).unwrap();
         // 777 dir
         inode.i_mode = 0x41ff;
-        bg.add_entry_to_directory(".".to_string(), 1,FileType::Directory);
-        bg.add_entry_to_directory("..".to_string(), 1,FileType::Directory);
+        bg.add_entry_to_directory(1, 1, ".".to_string(), FileType::Directory);
+        bg.add_entry_to_directory(1, 1, "..".to_string(), FileType::Directory);
         bg
     }
 
@@ -189,11 +190,15 @@ impl BlockGroup {
     }
 
     pub fn bg_mkdir(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
-        let child_inode = self.add_entry_to_directory(name, parent_inode,FileType::Directory);
-        self.inode_table[child_inode - 1].init_as_dir();
-        self.add_entry_to_directory(".".to_string(), child_inode,FileType::Directory);
-        self.add_entry_to_directory("..".to_string(), child_inode,FileType::Directory);
-        Some(self.inode_table[parent_inode - 1].get_file_attr(child_inode as u64))
+        let new_inode_idx = self.get_inode();
+        let new_inode = self.inode_table.get_mut(new_inode_idx - 1).unwrap();
+        new_inode.init_as_dir();
+        let rec = Some(new_inode.get_file_attr(new_inode_idx as u64));
+        
+        self.add_entry_to_directory(parent_inode,new_inode_idx, name,FileType::Directory);
+        self.add_entry_to_directory(new_inode_idx,new_inode_idx, ".".to_string(),FileType::Directory);
+        self.add_entry_to_directory(new_inode_idx,parent_inode, "..".to_string(),FileType::Directory);
+        rec
     }
 
     pub fn bg_lookup(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
@@ -208,8 +213,8 @@ impl BlockGroup {
                 let dirs = data_block.get_all_dirs_name();
                 for dir in dirs {
                     if dir.name == name {
-                        let inode = &self.inode_table[index as usize - 1];
-                        return Some(inode.get_file_attr(index as u64));
+                        let inode = &self.inode_table[dir.inode as usize - 1];
+                        return Some(inode.get_file_attr(dir.inode as u64));
                     }
                 }
             }
@@ -223,18 +228,24 @@ impl BlockGroup {
     }
 
     pub fn bg_create(&mut self, name: String, parent_inode: usize) -> Option<fuser::FileAttr> {
-        let child_inode = self.add_entry_to_directory(name, parent_inode,FileType::Regular);
-        self.inode_table[child_inode - 1].init_as_file();
-        Some(self.bg_getattr(child_inode))
+        let new_inode_idx = self.get_inode();
+        let new_inode = self.inode_table.get_mut(new_inode_idx - 1).unwrap();
+        new_inode.init_as_file();
+        let rec = Some(new_inode.get_file_attr(new_inode_idx as u64));
+
+        self.add_entry_to_directory(parent_inode, new_inode_idx, name, FileType::Regular);
+        rec
     }
 
-    pub fn add_entry_to_directory(&mut self, name: String, parent_inode: usize, filetype : FileType) -> usize {
-        let mut inode_index = self.get_inode(); //分配一个inode
-        if name == ".." {
-            inode_index = parent_inode;
-        }
-        let mut dir = DirectoryEntry::new(name, filetype, inode_index as u32, 0);
-        let (dir_data, dir_size) = dir.to_bytes();//修改了目录的大小
+    pub fn add_entry_to_directory(
+        &mut self,
+        parent_inode: usize,
+        child_inode: usize,
+        name: String,
+        filetype: FileType,
+    ) {
+        let mut dir = DirectoryEntry::new(name, filetype, child_inode as u32, 0);
+        let (dir_data, dir_size) = dir.to_bytes(); //修改了目录的大小
         for &block_index in self
             .inode_table
             .get(parent_inode - 1)
@@ -250,7 +261,7 @@ impl BlockGroup {
                         &dir_data,
                         BLOCK_SIZE - data_block.count_free_bytes() as usize,
                     );
-                    return inode_index;
+                    return;
                 }
             }
         }
@@ -263,15 +274,13 @@ impl BlockGroup {
             .iter_mut()
             .find(|x| x.is_none())
             .unwrap() = Some(new_block_index as u32);
-
-        inode_index
     }
 
     fn get_inode(&mut self) -> usize {
         match self.inode_bitmap.free_index() {
             Some(index) => {
                 self.inode_bitmap.set(index, true);
-                return index + 1
+                return index + 1;
             }
             None => {
                 panic!("no free inode")
@@ -283,7 +292,7 @@ impl BlockGroup {
         match self.block_bitmap.free_index() {
             Some(index) => {
                 self.block_bitmap.set(index, true);
-                return index + 1
+                return index + 1;
             }
             None => panic!("no free block"),
         }
@@ -413,7 +422,7 @@ impl Inode {
         self.i_ctime = get_current_time();
     }
 
-    pub fn init_as_file(&mut self,) {
+    pub fn init_as_file(&mut self) {
         self.i_mode = 0x81ff;
         self.i_size = 0;
         self.i_atime = get_current_time();
