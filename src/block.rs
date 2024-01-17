@@ -170,7 +170,31 @@ impl BlockGroup {
             _ => panic!("not implemented"),
         }
     }
+    
+    pub fn rmfile(&mut self,inode_index : usize){
+        for index in self.inode_table[inode_index].direct_pointer{
+            if let Some(block_idx) = index  {
+                self.data_block.remove(block_idx as usize); 
+            }
+        }
+    }
 
+    pub fn bg_unlink(&mut self, name: String, parent_inode: usize){
+        for block_index in self
+            .inode_table
+            .get(parent_inode - 1)
+            .unwrap()
+            .direct_pointer
+        {
+            if let Some(index) = block_index {
+                self.inode_bitmap.set(
+                    dbg!(self.data_block[index as usize].rmdir_from_data_block(&name)
+                ), false); 
+            }
+        }
+
+
+    }
     pub fn bg_list(&self, parent_inode: usize) -> Vec<DirectoryEntry> {
         let mut all_dirs: Vec<DirectoryEntry> = vec![];
         for index in self.inode_table[parent_inode as usize - 1].direct_pointer {
@@ -232,9 +256,8 @@ impl BlockGroup {
         let new_inode = self.inode_table.get_mut(new_inode_idx - 1).unwrap();
         new_inode.init_as_file();
         let rec = Some(new_inode.get_file_attr(new_inode_idx as u64));
-
-        self.add_entry_to_directory(parent_inode, new_inode_idx, name, FileType::Regular);
-        rec
+        self.add_entry_to_directory(parent_inode, new_inode_idx, name, FileType::Regular);  
+        dbg!(rec)
     }
 
     pub fn add_entry_to_directory(
@@ -497,19 +520,22 @@ impl DataBlock {
         dir_vec
     }
 
-    pub fn rmdir_from_data_block(&mut self, dir_name: &String) {
+    pub fn rmdir_from_data_block(&mut self, dir_name: &String)  -> usize{
         let mut offset = 0;
+        let mut inode_index = 0;
         while offset < BLOCK_SIZE {
-            let file_size: usize =
-                bincode::deserialize(&self.data[4 + offset..6 + offset]).unwrap();
+            let file_size = 
+            self.data[offset + 4] as usize + ((self.data[offset + 5] as usize) << 8); 
             let dir: DirectoryEntry =
                 bincode::deserialize(&self.data[offset..offset + file_size]).unwrap();
+                inode_index = dir.inode;
             if dir.name == *dir_name {
                 self.delete_some_block(offset, file_size);
                 break;
             }
             offset += file_size;
         }
+        inode_index as usize
     }
     //todo这个部分删除数据块的部分还需要在考虑一下，直接覆盖时间复杂度太高
     pub fn delete_some_block(&mut self, offset: usize, block_count: usize) {

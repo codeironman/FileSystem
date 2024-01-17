@@ -81,6 +81,21 @@ impl Filesystem for EXT2FS {
         reply.entry(&Duration::from_secs(1), &attr, 0);
     }
 
+    fn unlink(&mut self,
+         _req: &fuser::Request<'_>, 
+         parent: u64, 
+         name: &std::ffi::OsStr, 
+         reply: fuser::ReplyEmpty) {
+        println!(
+                "unlink called for parent={}, name={}",
+                parent,
+                name.to_string_lossy()
+            );
+        let name = name.to_string_lossy().into_owned();
+        self.block_groups.bg_unlink(name, parent as usize);
+        reply.ok()
+    }
+
     fn rmdir(
         &mut self,
         _req: &fuser::Request<'_>,
