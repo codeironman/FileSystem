@@ -45,8 +45,4 @@ mod test {
     }
     
 
-    #[test]
-    fn test_string(){
-        let name: &std::ffi::OsStr = "11".to;
-    }
 }
