@@ -127,7 +127,6 @@ impl Filesystem for EXT2FS {
     fn getattr(&mut self, _req: &fuser::Request<'_>, ino: u64, reply: fuser::ReplyAttr) {
         println!("getattr called for ino={}", ino);
         let attr = self.block_groups.bg_getattr(ino as usize);
-        dbg!(attr);
         reply.attr(&Duration::new(0, 0), &attr);
     }
 
@@ -152,9 +151,6 @@ impl Filesystem for EXT2FS {
         }else{
             reply.error(libc::ENOENT)
         }
-    }
-
-    fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
     }
 
     fn create(
