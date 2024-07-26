@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub struct Bitmap {
     data: Vec<u8>,
 }
@@ -28,6 +29,6 @@ impl Bitmap {
                 }
             }
         }
-        return None;
+        None
     }
 }

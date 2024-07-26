@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub enum FileType {
@@ -46,7 +47,7 @@ impl DirectoryEntry {
         }
     }
 
-    pub fn entry_update(&mut self,size : u16){
+    pub fn entry_update(&mut self, size: u16) {
         self.file_size = size;
     }
 

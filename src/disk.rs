@@ -1,11 +1,7 @@
-use crate::block::{self, BlockGroup, BootBlock, SuperBlock};
-use crate::file::*;
-use bincode::config::BigEndian;
+#![allow(dead_code)]
+use crate::block::BlockGroup;
 use fuser::Filesystem;
-use log::debug;
-use log::{info, logger};
-use std::f32::consts::E;
-use std::time::{self, Duration};
+use std::time::Duration;
 pub struct EXT2FS {
     //boot_block : Boot_Block,
     block_groups: BlockGroup,
@@ -22,7 +18,7 @@ impl Filesystem for EXT2FS {
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), std::ffi::c_int> {
         println!("init called");
-        _config.add_capabilities(fuser::consts::FUSE_ATOMIC_O_TRUNC);
+        let _ = _config.add_capabilities(fuser::consts::FUSE_ATOMIC_O_TRUNC);
         Ok(())
     }
 
@@ -83,16 +79,18 @@ impl Filesystem for EXT2FS {
         reply.entry(&Duration::from_secs(1), &attr, 0);
     }
 
-    fn unlink(&mut self,
-         _req: &fuser::Request<'_>, 
-         parent: u64, 
-         name: &std::ffi::OsStr, 
-         reply: fuser::ReplyEmpty) {
+    fn unlink(
+        &mut self,
+        _req: &fuser::Request<'_>,
+        parent: u64,
+        name: &std::ffi::OsStr,
+        reply: fuser::ReplyEmpty,
+    ) {
         println!(
-                "unlink called for parent={}, name={}",
-                parent,
-                name.to_string_lossy()
-            );
+            "unlink called for parent={}, name={}",
+            parent,
+            name.to_string_lossy()
+        );
         let name = name.to_string_lossy().into_owned();
         self.block_groups.bg_unlink(name, parent as usize);
         reply.ok()
@@ -165,15 +163,15 @@ impl Filesystem for EXT2FS {
             .bg_lookup(dir_name.to_string(), parent as usize);
         if let Some(file) = attr {
             reply.entry(&Duration::from_secs(1), &file, 0);
-        }else{
+        } else {
             reply.error(libc::ENOENT)
         }
     }
 
-    fn open(&mut self,
-         _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
-        
+    fn open(&mut self, _req: &fuser::Request<'_>, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {
+        let _ = reply;
     }
+
     fn create(
         &mut self,
         _req: &fuser::Request<'_>,
